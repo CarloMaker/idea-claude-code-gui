@@ -11,6 +11,7 @@
     "back": "Volver",
     "close": "Cerrar",
     "newSession": "Nueva sesión",
+    "newTab": "Nueva pestaña",
     "history": "Historial",
     "settings": "Configuración",
     "thinking": "Pensando",
@@ -47,7 +48,33 @@
     "imagePreview": "Vista previa",
     "context": "Contexto",
     "usage": "Uso",
-    "usagePercentage": "Uso: {{percentage}}"
+    "usagePercentage": "Uso: {{percentage}}",
+    "noThinkingContent": "Sin contenido de pensamiento",
+    "parseError": "Error al analizar el contenido",
+    "noMatchingFiles": "Sin archivos coincidentes",
+    "noMatchingCommands": "Sin comandos coincidentes",
+    "noAvailableAgents": "Sin agentes disponibles",
+    "collapse": "Colapsar",
+    "expand": "Expandir",
+    "backToTop": "Volver arriba",
+    "backToBottom": "Volver abajo",
+    "refresh": "Actualizar",
+    "clickToDisable": "Clic para deshabilitar",
+    "clickToEnable": "Clic para habilitar",
+    "copyHomepageLink": "Copiar enlace de inicio",
+    "copyDocsLink": "Copiar enlace de docs",
+    "editConfig": "Editar config",
+    "deleteServer": "Eliminar servidor",
+    "loadingFailed": "Error de carga",
+    "pleaseCloseAndReopen": "Por favor cierra y vuelve a abrir",
+    "loadingSlashCommands": "Cargando comandos de barra...",
+    "pleaseWait": "Por favor espera...",
+    "retrying": "Reintentando ({{count}}/{{max}})...",
+    "global": "Global",
+    "localProject": "Local",
+    "disabled": "Deshabilitado",
+    "sdkNotInstalled": "{{provider}} SDK no está instalado. Instala el SDK para comenzar a chatear.",
+    "goInstallSdk": "Ir a instalar"
   },
   "settings": {
     "title": "Configuración",
@@ -68,14 +95,16 @@
         "english": "English",
         "hindi": "हिन्दी",
         "spanish": "Español",
-        "french": "Français"
+        "french": "Français",
+        "japanese": "日本語"
       },
       "nodePath": {
         "label": "Ruta de Node.js",
         "placeholder": "ej. C:\\Program Files\\nodejs\\node.exe o /usr/local/bin/node",
         "hint": "Ejecutar en terminal",
         "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "para obtener la ruta del ejecutable real de Node.js. Dejar vacío para detección automática."
+        "hintText": "para obtener la ruta del ejecutable real de Node.js. Dejar vacío para detección automática.",
+        "versionTooLow": "La versión de Node.js es demasiado baja. El plugin requiere v{{minVersion}} o superior para funcionar correctamente"
       },
       "fontSize": {
         "label": "Tamaño de fuente",
@@ -85,10 +114,46 @@
         "level4": "Más grande (110%)",
         "level5": "Grande (120%)",
         "level6": "Máximo (140%)"
+      },
+      "editorFont": {
+        "label": "Fuente (sigue la fuente del editor)",
+        "hint": "No editable aquí. Para modificar, ve a Configuración de IDEA → Editor → Fuente (reinicia IDEA para que la fuente del plugin surta efecto)"
+      },
+      "sendShortcut": {
+        "label": "Atajo de envío",
+        "enter": "Enter para enviar",
+        "enterDesc": "Presiona Enter para enviar mensaje, Shift+Enter para nueva línea",
+        "cmdEnter": "⌘/Ctrl+Enter para enviar",
+        "cmdEnterDesc": "Presiona ⌘/Ctrl+Enter para enviar mensaje, Enter para nueva línea"
       }
     },
     "providers": "Gestión de proveedores",
     "providersDesc": "Gestionar configuración de proveedores de API Claude, cambiar entre diferentes proveedores de servicio API",
+    "dependencies": "Dependencias SDK",
+    "dependenciesDesc": "Gestionar instalaciones y actualizaciones de dependencias AI SDK",
+    "dependency": {
+      "title": "Gestión de dependencias SDK",
+      "description": "Gestionar dependencias de AI SDK. Instala el SDK requerido antes del primer uso.",
+      "installPolicyTip": "Para reducir el tamaño del paquete, los SDKs ahora deben instalarse manualmente",
+      "claudeSdkName": "Claude Code SDK",
+      "claudeSdkDescription": "Requerido para funciones de Claude AI. Incluye Claude Code SDK y dependencias relacionadas.",
+      "codexSdkName": "Codex SDK",
+      "codexSdkDescription": "Requerido para funciones de Codex AI. Incluye OpenAI Codex SDK.",
+      "loading": "Cargando estado de dependencias...",
+      "install": "Instalar",
+      "installing": "Instalando...",
+      "uninstall": "Desinstalar",
+      "uninstalling": "Desinstalando...",
+      "update": "Actualizar",
+      "updateAvailable": "Actualización disponible",
+      "installLogs": "Registros de instalación",
+      "waitingForLogs": "Esperando salida de registro...",
+      "nodeNotConfigured": "Node.js no está configurado. Primero configura la ruta de Node.js en Configuración básica.",
+      "installSuccess": "{{name}} instalado correctamente",
+      "installFailed": "Instalación fallida: {{error}}",
+      "uninstallSuccess": "{{name}} ha sido desinstalado",
+      "uninstallFailed": "Desinstalación fallida: {{error}}"
+    },
     "usage": "Estadísticas de uso",
     "usageDesc": "Ver consumo de Token, estadísticas de costos y análisis de tendencias de uso",
     "mcp": "Servidores MCP",
@@ -99,6 +164,7 @@
     "agentsDesc": "Gestionar y configurar agentes de IA",
     "skills": "Habilidades",
     "skillsDesc": "Gestionar y configurar módulos de habilidades",
+    "codexFeatureUnavailable": "Esta sección de configuración aún no está disponible en Codex. Cambia a Claude Code.",
     "community": "Comunidad oficial",
     "communityDesc": "Escanea el código QR a continuación para unirte al grupo oficial de WeChat para obtener las últimas noticias y soporte técnico",
     "communityQrTip": "Escanea con WeChat para unirte a la comunidad",
@@ -197,7 +263,39 @@
     "comingSoon": "Próximamente...",
     "permissionsComingSoon": "Configuración de permisos próximamente...",
     "agentsComingSoon": "Configuración de agentes próximamente...",
-    "skillsComingSoon": "Configuración de habilidades próximamente..."
+    "skillsComingSoon": "Configuración de habilidades próximamente...",
+    "agent": {
+      "title": "Agentes",
+      "create": "Crear",
+      "createAgent": "Crear Agente",
+      "createAgentHint": "Haz clic para ir a la página de configuración de agentes",
+      "customAgents": "Agentes personalizados",
+      "noAgents": "No hay agentes personalizados",
+      "noAgentsDropdown": "No hay agentes",
+      "loadFailed": "Error al cargar",
+      "loading": "Cargando...",
+      "menu": "Menú",
+      "addSuccess": "Agente creado exitosamente",
+      "updateSuccess": "Agente actualizado exitosamente",
+      "deleteSuccess": "Agente eliminado exitosamente",
+      "operationSuccess": "Operación exitosa",
+      "operationFailed": "Operación fallida",
+      "deleteConfirmTitle": "Confirmar eliminación",
+      "deleteConfirmMessage": "¿Estás seguro de que quieres eliminar el agente \"{{name}}\"? Esta acción no se puede deshacer.",
+      "clearAgent": "Limpiar agente seleccionado",
+      "dialog": {
+        "addTitle": "Crear Agente",
+        "editTitle": "Editar Agente",
+        "name": "Nombre",
+        "namePlaceholder": "Ingresa el nombre del agente",
+        "nameRequired": "Por favor ingresa el nombre del agente",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Ingresa el rol, tono, flujo de trabajo, preferencias de herramientas y reglas del agente. (Opcional)",
+        "promptHint": "El prompt se enviará al AI como instrucciones del sistema al inicio de la conversación",
+        "confirmAdd": "Crear",
+        "saveChanges": "Guardar"
+      }
+    }
   },
   "history": {
     "title": "Historial de sesiones",
@@ -238,7 +336,30 @@
     "dialogTitle": "Solicitud de permiso",
     "allow": "Permitir una vez",
     "allowAlways": "Permitir siempre",
-    "deny": "Denegar"
+    "deny": "Denegar",
+    "userDenied": "El usuario denegó la solicitud de permiso",
+    "fromExternalProcess": "Solicitud del proceso externo",
+    "tools": {
+      "Write": "Escribir archivo",
+      "Edit": "Editar archivo",
+      "Read": "Leer archivo",
+      "Bash": "Ejecutar comando",
+      "TodoWrite": "Escribir tarea",
+      "TodoRead": "Leer tarea",
+      "WebSearch": "Búsqueda web",
+      "WebFetch": "Obtener web",
+      "execute": "Ejecutar {{toolName}}",
+      "readDirectory": "Leer directorio"
+    }
+  },
+  "askUserQuestion": {
+    "title": "Claude tiene algunas preguntas para ti",
+    "progress": "Pregunta {{current}} / {{total}}",
+    "multiSelectHint": "Puedes seleccionar múltiples opciones",
+    "cancel": "Selección automática de IA",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "submit": "Enviar"
   },
   "toast": {
     "switchSuccess": "Cambio exitoso",
@@ -248,7 +369,16 @@
     "deleteSuccess": "Eliminación exitosa",
     "operationFailed": "Operación fallida",
     "copySuccess": "{{label}} copiado al portapapeles",
-    "copyFailed": "Error al copiar"
+    "copyFailed": "Error al copiar",
+    "newSessionCreatedReady": "Nueva sesión creada, puede comenzar a hacer preguntas",
+    "providerSwitchSuccess": "¡Proveedor cambiado con éxito!",
+    "providerSwitchFailed": "Error al cambiar de proveedor",
+    "operationSuccess": "Operación exitosa",
+    "pleaseEnterProviderName": "Por favor ingresa el nombre del proveedor",
+    "invalidJsonConfig": "Formato de configuración JSON inválido",
+    "providerAdded": "Proveedor añadido",
+    "providerUpdated": "Proveedor actualizado",
+    "providerDeleted": "Proveedor eliminado"
   },
   "config": {
     "clickToCopy": "Haz clic para copiar",
@@ -258,6 +388,7 @@
   },
   "markdown": {
     "copyCode": "Copiar código",
+    "copyMessage": "Copiar mensaje",
     "copySuccess": "¡Copiado!"
   },
   "usage": {
@@ -338,6 +469,62 @@
       "memory": "Knowledge graph and memory storage tool",
       "sequentialThinking": "Sequential thinking and reasoning tool",
       "context7": "Document search and context retrieval tool"
+    },
+    "help": {
+      "title": "¿Qué es MCP?",
+      "protocol": {
+        "title": "Model Context Protocol",
+        "description": "MCP (Model Context Protocol) es un protocolo abierto desarrollado por Anthropic que permite a los modelos de IA acceder de forma segura a herramientas y fuentes de datos externas."
+      },
+      "features": {
+        "title": "Características principales",
+        "toolExtension": {
+          "label": "Extensión de herramientas",
+          "description": "Agrega capacidades como acceso al sistema de archivos y red a Claude"
+        },
+        "dataConnection": {
+          "label": "Conexión de datos",
+          "description": "Conéctate a fuentes de datos externas como bases de datos y APIs"
+        },
+        "security": {
+          "label": "Seguridad y control",
+          "description": "Control estricto de permisos y aislamiento de datos"
+        },
+        "integration": {
+          "label": "Fácil integración",
+          "description": "Soporte para múltiples lenguajes de programación y entornos de ejecución"
+        }
+      },
+      "configuration": {
+        "title": "Métodos de configuración",
+        "description": "Dos tipos de configuración admitidos:",
+        "stdio": {
+          "description": "Comunicarse con procesos locales a través de entrada/salida estándar",
+          "example": "Iniciado con comandos npx/uvx"
+        },
+        "httpSse": {
+          "description": "Comunicarse con servidores remotos a través de la red",
+          "example": "Dirección URL"
+        }
+      },
+      "learnMore": {
+        "title": "Más información",
+        "description": "Visita la documentación oficial:"
+      },
+      "gotIt": "Entendido"
+    },
+    "serverDialog": {
+      "addTitle": "Configuración Manual",
+      "editTitle": "Editar Servidor",
+      "rawConfig": "Configuración Raw (JSON)",
+      "description": "Ingrese la configuración JSON de MCP Servers (preferir configuración NPX o UVX)",
+      "securityWarning": "Por favor verifique la fuente y evalúe los riesgos antes de configurar",
+      "saving": "Guardando...",
+      "errors": {
+        "idExists": "El ID del servidor \"{{id}}\" ya existe",
+        "unrecognizedFormat": "Formato de configuración no reconocido",
+        "jsonParseError": "Error de análisis JSON: {{message}}"
+      }
     }
   },
   "tools": {
@@ -368,7 +555,10 @@
     "refreshFileInIdeaSuccess": "Se ha actualizado manualmente el contenido de este archivo en IDEA",
     "showDiffInIdea": "Mostrar cambios en IDEA",
     "diffButton": "Diff",
-    "editPrefix": "Editar: {{fileName}}"
+    "editPrefix": "Editar: {{fileName}}",
+    "lineRange": "Líneas {{start}}-{{end}}",
+    "filePath": "Ruta del archivo:",
+    "unknownTool": "Herramienta desconocida"
   },
   "skills": {
     "title": "Skills",
@@ -398,7 +588,56 @@
     "importFailed": "Failed to import Skill",
     "deleteSuccess": "Successfully deleted Skill",
     "toggleSuccess": "Updated Skill status",
-    "toggleFailed": "Failed to update Skill status"
+    "toggleFailed": "Failed to update Skill status",
+    "help": {
+      "title": "¿Qué son las Skills?",
+      "overview": {
+        "title": "Descripción general",
+        "description": "Las Skills son conjuntos de instrucciones, scripts y carpetas de recursos cargados dinámicamente que mejoran el rendimiento de Claude para tareas específicas. Las Skills enseñan a Claude cómo completar tareas particulares de manera repetible, como crear documentos usando pautas de marca de la empresa, analizar datos siguiendo flujos de trabajo específicos de la organización o automatizar tareas personales."
+      },
+      "structure": {
+        "title": "Estructura de Skill",
+        "description": "Una Skill es una carpeta que contiene un archivo SKILL.md:",
+        "example": "my-skill/\n├── SKILL.md          # Requerido: archivo de definición de habilidad\n├── templates/        # Opcional: archivos de plantilla\n└── references/       # Opcional: materiales de referencia"
+      },
+      "format": {
+        "title": "Formato SKILL.md",
+        "description": "Los archivos SKILL.md usan formato YAML frontmatter + Markdown:",
+        "example": "---\nname: my-skill-name\ndescription: Descripción de la habilidad y cuándo usarla\n---\n\n# Instrucciones de Skill\n\nContenido de instrucción detallado...",
+        "hint": "name y description son campos obligatorios. Los campos opcionales incluyen license, allowed-tools, metadata"
+      },
+      "configuration": {
+        "title": "Métodos de Configuración",
+        "description": "Formas de agregar una Skill:",
+        "localPath": {
+          "label": "Ruta Local",
+          "description": "Especifique la ruta de la carpeta que contiene SKILL.md"
+        },
+        "relativePath": {
+          "label": "Ruta Relativa",
+          "description": "Relativa a la raíz del proyecto, p. ej., ./skills/my-skill"
+        },
+        "absolutePath": {
+          "label": "Ruta Absoluta",
+          "description": "Ruta completa del sistema de archivos"
+        }
+      },
+      "tips": {
+        "title": "Consejos de Uso",
+        "item1": "Asegúrese de que el directorio de Skill contenga un archivo SKILL.md válido",
+        "item2": "Los nombres de Skill deben usar letras minúsculas, números y guiones (hyphen-case)",
+        "item3": "Las Skills se activan automáticamente en las sesiones de Claude después de cargarse",
+        "item4": "Controle el estado de Skills individuales con interruptores de habilitar/deshabilitar",
+        "item5": "Mencione el nombre de la Skill en el chat para usarla, p. ej., \"Usa la skill pdf para extraer campos del formulario\""
+      },
+      "learnMore": {
+        "title": "Más información",
+        "description": "Más información sobre Skills:",
+        "link1": "¿Qué son las Skills?",
+        "link2": "Creación de Skills Personalizadas",
+        "link3": "Repositorio de Ejemplos de Skills de Anthropic"
+      }
+    }
   },
   "models": {
     "claude": {
@@ -414,6 +653,99 @@
         "label": "Haiku 4.5",
         "description": "Haiku 4.5 · El más rápido para respuestas rápidas"
       }
+    },
+    "codex": {
+      "gpt52codex": {
+        "label": "gpt-5.2-codex",
+        "description": "Último modelo de codificación agéntico de frontera."
+      },
+      "gpt51codexMax": {
+        "label": "gpt-5.1-codex-max",
+        "description": "Modelo insignia optimizado para Codex con razonamiento profundo y rápido."
+      },
+      "gpt51codexMini": {
+        "label": "gpt-5.1-codex-mini",
+        "description": "Optimizado para Codex. Más económico y rápido, pero menos capaz."
+      },
+      "gpt52": {
+        "label": "gpt-5.2",
+        "description": "Último modelo de frontera con mejoras en conocimiento."
+      }
     }
+  },
+  "rewind": {
+    "title": "Restaurar archivos al estado anterior",
+    "tooltip": "Restaurar archivos a su estado en este mensaje",
+    "shortcut": "ESC ESC",
+    "selectTitle": "Seleccionar punto de restauración",
+    "noRewindableMessages": "No hay mensajes restaurables en esta sesión",
+    "rewindTo": "Restaurar a",
+    "impact": "Impacto",
+    "willRestore": "Restaurará los archivos a su estado en este mensaje",
+    "changesLost": "Los cambios realizados después de este punto se perderán",
+    "messagesAffected": "mensajes afectados",
+    "historyKept": "El historial de conversación se conservará",
+    "cannotUndo": "Esta acción no se puede deshacer.",
+    "restoreFiles": "Restaurar archivos",
+    "restoring": "Restaurando archivos...",
+    "success": "Reversión exitosa",
+    "successSimple": "Reversión exitosa",
+    "failed": "Error al restaurar archivos",
+    "notAvailable": "Restauración no disponible para esta sesión",
+    "parseError": "Error al analizar el resultado"
+  },
+  "reasoning": {
+    "title": "Seleccionar profundidad de razonamiento",
+    "low": {
+      "label": "Bajo",
+      "description": "Respuestas rápidas con razonamiento básico"
+    },
+    "medium": {
+      "label": "Medio",
+      "description": "Pensamiento equilibrado (predeterminado)"
+    },
+    "high": {
+      "label": "Alto",
+      "description": "Razonamiento profundo para tareas complejas"
+    },
+    "xhigh": {
+      "label": "Máximo",
+      "description": "Profundidad máxima de razonamiento"
+    }
+  },
+  "aiBridge": {
+    "claudeCodeInterrupted": "Claude Code fue interrumpido (posiblemente tiempo de espera de respuesta o cancelación del usuario):",
+    "claudeCodeError": "Error de Claude Code:",
+    "errorMessage": "Mensaje de error",
+    "currentApiKeySource": "Fuente actual de API Key",
+    "currentApiKeyPreview": "Vista previa de API Key actual",
+    "currentBaseUrl": "Base URL actual",
+    "source": "fuente",
+    "notConfigured": "No configurado",
+    "notConfiguredEmpty": "No configurado (valor vacío o faltante)",
+    "defaultBaseUrl": "Predeterminado (https://api.anthropic.com)",
+    "configTip": "Consejo: CLI puede leer de variables de entorno o settings.json; este plugin solo admite lectura de settings.json para evitar problemas. Puede configurarlo en Configuración > Gestión de proveedores en la esquina superior derecha del plugin",
+    "apiError": "Error de API",
+    "apiErrorCauses": "Posibles causas:\n1. API Key no está configurada correctamente\n2. Problema de configuración del servicio proxy de terceros\n3. Por favor verifique la configuración en ~/.claude/settings.json",
+    "codexAuthError": "Error de autenticación de Codex:",
+    "codexAuthErrorChecks": "Por favor verifique lo siguiente:\n1. ¿Es correcta la API Key de Codex en la configuración del plugin?\n2. ¿Tiene la API Key permisos suficientes?\n3. Si usa una Base URL personalizada, confirme que la dirección sea correcta",
+    "codexAuthTip": "Consejo: Codex requiere una API Key válida de OpenAI",
+    "codexNetworkError": "Error de red de Codex:",
+    "codexNetworkErrorChecks": "Por favor verifique:\n1. ¿Funciona la conexión de red?\n2. Si usa un proxy, confirme la configuración del proxy\n3. ¿El firewall está bloqueando la conexión?",
+    "codexError": "Error de Codex:",
+    "codexErrorCheck": "Por favor verifique la conexión de red y la configuración de Codex",
+    "codexThinkingHint": "Codex no devolvió elementos de razonamiento. Si aún no puede ver el proceso de pensamiento, consulte docs/codex/docs/config.md para la configuración de hide_agent_reasoning/show_raw_agent_reasoning, y asegúrese de que su cuenta de OpenAI haya sido verificada.",
+    "userDeniedPermission": "El usuario denegó el permiso para la herramienta {{toolName}}",
+    "userDidNotProvideAnswers": "El usuario no proporcionó respuestas",
+    "dbMissingPath": "Falta el argumento de ruta del archivo de base de datos",
+    "dbFileNotExist": "El archivo de base de datos no existe",
+    "dbReadFailed": "Error al leer la base de datos",
+    "dbParseProviderFailed": "Error al analizar la configuración del proveedor",
+    "aiResponseEmpty": "La respuesta de AI está vacía",
+    "enhancementFailed": "Mejora fallida",
+    "uploadedImages": "{{count}} imagen(es) subida(s)",
+    "uploadedAttachments": "Archivo(s) adjunto(s) subido(s)",
+    "emptyMessage": "Mensaje vacío",
+    "attachment": "Adjunto"
   }
 }

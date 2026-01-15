@@ -1,7 +1,7 @@
 import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
 
-export type SettingsTab = 'basic' | 'providers' | 'usage' | 'permissions' | 'mcp' | 'agents' | 'skills' | 'community';
+export type SettingsTab = 'basic' | 'providers' | 'dependencies' | 'usage' | 'permissions' | 'mcp' | 'agents' | 'skills' | 'community';
 
 interface SidebarItem {
   key: SettingsTab;
@@ -12,6 +12,7 @@ interface SidebarItem {
 const sidebarItems: SidebarItem[] = [
   { key: 'basic', icon: 'codicon-settings-gear', labelKey: 'settings.basic.title' },
   { key: 'providers', icon: 'codicon-vm-connect', labelKey: 'settings.providers' },
+  { key: 'dependencies', icon: 'codicon-extensions', labelKey: 'settings.dependencies' },
   { key: 'usage', icon: 'codicon-graph', labelKey: 'settings.usage' },
   { key: 'mcp', icon: 'codicon-server', labelKey: 'settings.mcp' },
   { key: 'permissions', icon: 'codicon-shield', labelKey: 'settings.permissions' },
@@ -25,6 +26,8 @@ interface SettingsSidebarProps {
   onTabChange: (tab: SettingsTab) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  disabledTabs?: SettingsTab[];
+  onDisabledTabClick?: (tab: SettingsTab) => void;
 }
 
 const SettingsSidebar = ({
@@ -32,6 +35,8 @@ const SettingsSidebar = ({
   onTabChange,
   isCollapsed,
   onToggleCollapse,
+  disabledTabs = [],
+  onDisabledTabClick,
 }: SettingsSidebarProps) => {
   const { t } = useTranslation();
 
@@ -40,12 +45,20 @@ const SettingsSidebar = ({
       <div className={styles.sidebarItems}>
         {sidebarItems.map((item) => {
           const label = t(item.labelKey);
+          const isDisabled = disabledTabs.includes(item.key);
           return (
             <div
               key={item.key}
-              className={`${styles.sidebarItem} ${currentTab === item.key ? styles.active : ''}`}
-              onClick={() => onTabChange(item.key)}
+              className={`${styles.sidebarItem} ${currentTab === item.key ? styles.active : ''} ${isDisabled ? styles.disabled : ''}`}
+              onClick={() => {
+                if (isDisabled) {
+                  onDisabledTabClick?.(item.key);
+                  return;
+                }
+                onTabChange(item.key);
+              }}
               title={isCollapsed ? label : ''}
+              aria-disabled={isDisabled}
             >
               <span className={`codicon ${item.icon}`} />
               <span className={styles.sidebarItemText}>{label}</span>

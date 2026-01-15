@@ -40,6 +40,7 @@ public class NodeDetector {
     };
 
     private String cachedNodeExecutable = null;
+    private NodeDetectionResult cachedDetectionResult = null;
 
     /**
      * 查找 Node.js 可执行文件路径
@@ -294,12 +295,21 @@ public class NodeDetector {
                 }
             }
 
+            // 动态查找 nvmd 管理的 Node.js
+            // nvmd (Node Version Manager Desktop): ~/.nvmd/bin/node
+            File nvmdBin = new File(userHome + "/.nvmd/bin/node");
+            if (nvmdBin.exists()) {
+                pathsToCheck.add(nvmdBin.getAbsolutePath());
+                LOG.info("  发现 nvmd Node.js: " + nvmdBin.getAbsolutePath());
+            }
+
             // 添加常见 Unix/macOS 路径
             pathsToCheck.add("/usr/local/bin/node");           // Homebrew (macOS Intel)
             pathsToCheck.add("/opt/homebrew/bin/node");        // Homebrew (Apple Silicon)
             pathsToCheck.add("/usr/bin/node");                 // Linux 系统
             pathsToCheck.add(userHome + "/.volta/bin/node");   // Volta
             pathsToCheck.add(userHome + "/.fnm/aliases/default/bin/node"); // fnm
+            pathsToCheck.add(userHome + "/.nvmd/bin/node");    // nvmd (Node Version Manager Desktop)
         }
 
         // 遍历检查每个路径
@@ -481,10 +491,14 @@ public class NodeDetector {
     }
 
     /**
-     * 手动设置 Node.js 可执行文件路径
+     * 手动设置 Node.js 可执行文件路径.
+     * 同时清除缓存的检测结果，以便下次使用时重新验证
      */
     public void setNodeExecutable(String path) {
         this.cachedNodeExecutable = path;
+        // 清除检测结果缓存，确保缓存状态一致
+        // 新路径会在下次调用 verifyAndCacheNodePath 时重新验证并缓存
+        this.cachedDetectionResult = null;
     }
 
     /**
@@ -498,9 +512,87 @@ public class NodeDetector {
     }
 
     /**
-     * 清除缓存的 Node.js 路径
+     * 清除缓存的 Node.js 路径和检测结果
      */
     public void clearCache() {
         this.cachedNodeExecutable = null;
+        this.cachedDetectionResult = null;
+    }
+
+    /**
+     * 获取缓存的检测结果
+     */
+    public NodeDetectionResult getCachedDetectionResult() {
+        return cachedDetectionResult;
+    }
+
+    public String getCachedNodePath() {
+        if (cachedDetectionResult != null && cachedDetectionResult.getNodePath() != null) {
+            return cachedDetectionResult.getNodePath();
+        }
+        return cachedNodeExecutable;
+    }
+
+    public String getCachedNodeVersion() {
+        return cachedDetectionResult != null ? cachedDetectionResult.getNodeVersion() : null;
+    }
+
+    public NodeDetectionResult verifyAndCacheNodePath(String path) {
+        if (path == null || path.isEmpty()) {
+            clearCache();
+            return NodeDetectionResult.failure("未指定 Node.js 路径");
+        }
+        String version = verifyNodePath(path);
+        NodeDetectionResult result;
+        if (version != null) {
+            result = NodeDetectionResult.success(path, version, NodeDetectionResult.DetectionMethod.KNOWN_PATH);
+        } else {
+            result = NodeDetectionResult.failure("无法验证指定的 Node.js 路径: " + path);
+        }
+        cacheDetection(result);
+        return result;
+    }
+
+    private void cacheDetection(NodeDetectionResult result) {
+        this.cachedDetectionResult = result;
+        if (result != null && result.isFound() && result.getNodePath() != null) {
+            this.cachedNodeExecutable = result.getNodePath();
+        }
+    }
+
+    /**
+     * 最低要求的 Node.js 主版本号.
+     */
+    public static final int MIN_NODE_MAJOR_VERSION = 18;
+
+    /**
+     * 从版本字符串中解析主版本号.
+     * @param version 版本字符串，如 "v20.10.0" 或 "20.10.0"
+     * @return 主版本号，解析失败返回 0
+     */
+    public static int parseMajorVersion(String version) {
+        if (version == null || version.isEmpty()) {
+            return 0;
+        }
+        try {
+            String versionStr = version.startsWith("v") ? version.substring(1) : version;
+            int dotIndex = versionStr.indexOf('.');
+            if (dotIndex > 0) {
+                return Integer.parseInt(versionStr.substring(0, dotIndex));
+            }
+            return Integer.parseInt(versionStr);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 检查 Node.js 版本是否满足最低要求.
+     * @param version 版本字符串
+     * @return true 如果版本 >= 18，否则 false
+     */
+    public static boolean isVersionSupported(String version) {
+        int major = parseMajorVersion(version);
+        return major >= MIN_NODE_MAJOR_VERSION;
     }
 }

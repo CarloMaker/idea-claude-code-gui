@@ -1,7 +1,11 @@
 package com.github.claudecodegui.handler;
 
-import com.github.claudecodegui.ClaudeHistoryReader;
+import com.github.claudecodegui.provider.claude.ClaudeHistoryReader;
+import com.github.claudecodegui.provider.codex.CodexHistoryReader;
 import com.github.claudecodegui.ClaudeSession;
+import com.github.claudecodegui.bridge.NodeDetector;
+import com.github.claudecodegui.model.NodeDetectionResult;
+import com.github.claudecodegui.util.FontConfigService;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.intellij.ide.util.PropertiesComponent;
@@ -22,17 +26,24 @@ public class SettingsHandler extends BaseMessageHandler {
 
     private static final String NODE_PATH_PROPERTY_KEY = "claude.code.node.path";
     private static final String PERMISSION_MODE_PROPERTY_KEY = "claude.code.permission.mode";
+    private static final String SEND_SHORTCUT_PROPERTY_KEY = "claude.code.send.shortcut";
 
     private static final String[] SUPPORTED_TYPES = {
         "get_mode",
         "set_mode",
         "set_model",
         "set_provider",
+        "set_reasoning_effort",
         "get_node_path",
         "set_node_path",
         "get_usage_statistics",
         "get_working_directory",
-        "set_working_directory"
+        "set_working_directory",
+        "get_editor_font_config",
+        "get_streaming_enabled",
+        "set_streaming_enabled",
+        "get_send_shortcut",
+        "set_send_shortcut"
     };
 
     private static final Map<String, Integer> MODEL_CONTEXT_LIMITS = new HashMap<>();
@@ -66,6 +77,9 @@ public class SettingsHandler extends BaseMessageHandler {
             case "set_provider":
                 handleSetProvider(content);
                 return true;
+            case "set_reasoning_effort":
+                handleSetReasoningEffort(content);
+                return true;
             case "get_node_path":
                 handleGetNodePath();
                 return true;
@@ -81,6 +95,21 @@ public class SettingsHandler extends BaseMessageHandler {
             case "set_working_directory":
                 handleSetWorkingDirectory(content);
                 return true;
+            case "get_editor_font_config":
+                handleGetEditorFontConfig();
+                return true;
+            case "get_streaming_enabled":
+                handleGetStreamingEnabled();
+                return true;
+            case "set_streaming_enabled":
+                handleSetStreamingEnabled(content);
+                return true;
+            case "get_send_shortcut":
+                handleGetSendShortcut();
+                return true;
+            case "set_send_shortcut":
+                handleSetSendShortcut(content);
+                return true;
             default:
                 return false;
         }
@@ -91,7 +120,7 @@ public class SettingsHandler extends BaseMessageHandler {
      */
     private void handleGetMode() {
         try {
-            String currentMode = "default";  // 默认值
+            String currentMode = "bypassPermissions";  // 默认值
 
             // 优先从 session 中获取
             if (context.getSession() != null) {
@@ -151,6 +180,7 @@ public class SettingsHandler extends BaseMessageHandler {
                 PropertiesComponent props = PropertiesComponent.getInstance();
                 props.setValue(PERMISSION_MODE_PROPERTY_KEY, mode);
                 LOG.info("Saved permission mode to settings: " + mode);
+                com.github.claudecodegui.notifications.ClaudeNotifier.setMode(context.getProject(), mode);
 
                 // 验证设置是否成功
                 // String currentMode = context.getSession().getPermissionMode();
@@ -205,6 +235,9 @@ public class SettingsHandler extends BaseMessageHandler {
             if (context.getSession() != null) {
                 context.getSession().setModel(model);
             }
+
+            // Update status bar with basic model name
+            com.github.claudecodegui.notifications.ClaudeNotifier.setModel(context.getProject(), model);
 
             // 计算新模型的上下文限制
             int newMaxTokens = getModelContextLimit(finalModelName);
@@ -344,22 +377,70 @@ public class SettingsHandler extends BaseMessageHandler {
     }
 
     /**
-     * 获取 Node.js 路径
+     * 处理设置思考深度请求 (仅 Codex)
+     */
+    private void handleSetReasoningEffort(String content) {
+        try {
+            String effort = content;
+            if (content != null && !content.isEmpty()) {
+                try {
+                    Gson gson = new Gson();
+                    JsonObject json = gson.fromJson(content, JsonObject.class);
+                    if (json.has("reasoningEffort")) {
+                        effort = json.get("reasoningEffort").getAsString();
+                    }
+                } catch (Exception e) {
+                    // content 本身就是 effort
+                }
+            }
+
+            LOG.info("[SettingsHandler] Setting reasoning effort to: " + effort);
+
+            if (context.getSession() != null) {
+                context.getSession().setReasoningEffort(effort);
+            }
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to set reasoning effort: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取 Node.js 路径和版本信息.
      */
     private void handleGetNodePath() {
         try {
             PropertiesComponent props = PropertiesComponent.getInstance();
             String saved = props.getValue(NODE_PATH_PROPERTY_KEY);
-            String effectivePath;
+            String pathToSend = "";
+            String versionToSend = null;
+
             if (saved != null && !saved.trim().isEmpty()) {
-                effectivePath = saved.trim();
+                pathToSend = saved.trim();
+                NodeDetectionResult result = context.getClaudeSDKBridge().verifyAndCacheNodePath(pathToSend);
+                if (result != null && result.isFound()) {
+                    versionToSend = result.getNodeVersion();
+                }
             } else {
-                String detected = context.getClaudeSDKBridge().getNodeExecutable();
-                effectivePath = detected != null ? detected : "";
+                NodeDetectionResult detected = context.getClaudeSDKBridge().detectNodeWithDetails();
+                if (detected != null && detected.isFound() && detected.getNodePath() != null) {
+                    pathToSend = detected.getNodePath();
+                    versionToSend = detected.getNodeVersion();
+                    props.setValue(NODE_PATH_PROPERTY_KEY, pathToSend);
+                    // 使用 verifyAndCacheNodePath 而不是 setNodeExecutable，确保版本信息被缓存
+                    context.getClaudeSDKBridge().verifyAndCacheNodePath(pathToSend);
+                    context.getCodexSDKBridge().setNodeExecutable(pathToSend);
+                }
             }
-            final String pathToSend = effectivePath != null ? effectivePath : "";
+
+            final String finalPath = pathToSend;
+            final String finalVersion = versionToSend;
+
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateNodePath", escapeJs(pathToSend));
+                JsonObject response = new JsonObject();
+                response.addProperty("path", finalPath);
+                response.addProperty("version", finalVersion);
+                response.addProperty("minVersion", NodeDetector.MIN_NODE_MAJOR_VERSION);
+                callJavaScript("window.updateNodePath", escapeJs(new Gson().toJson(response)));
             });
         } catch (Exception e) {
             LOG.error("[SettingsHandler] Failed to get Node.js path: " + e.getMessage(), e);
@@ -367,7 +448,7 @@ public class SettingsHandler extends BaseMessageHandler {
     }
 
     /**
-     * 设置 Node.js 路径
+     * 设置 Node.js 路径.
      */
     private void handleSetNodePath(String content) {
         LOG.debug("[SettingsHandler] ========== handleSetNodePath START ==========");
@@ -385,28 +466,59 @@ public class SettingsHandler extends BaseMessageHandler {
             }
 
             PropertiesComponent props = PropertiesComponent.getInstance();
-            String effectivePath;
+            String finalPath = "";
+            String versionToSend = null;
+            boolean verifySuccess = false;
+            String failureMsg = null;
+
             if (path == null || path.isEmpty()) {
                 props.unsetValue(NODE_PATH_PROPERTY_KEY);
-                // 同时清除 Claude 和 Codex 的手动配置
                 context.getClaudeSDKBridge().setNodeExecutable(null);
                 context.getCodexSDKBridge().setNodeExecutable(null);
                 LOG.info("[SettingsHandler] Cleared manual Node.js path from settings");
-                String detected = context.getClaudeSDKBridge().getNodeExecutable();
-                effectivePath = detected != null ? detected : "";
+
+                NodeDetectionResult detected = context.getClaudeSDKBridge().detectNodeWithDetails();
+                if (detected != null && detected.isFound() && detected.getNodePath() != null) {
+                    finalPath = detected.getNodePath();
+                    versionToSend = detected.getNodeVersion();
+                    props.setValue(NODE_PATH_PROPERTY_KEY, finalPath);
+                    // 使用 verifyAndCacheNodePath 确保版本信息被缓存
+                    context.getClaudeSDKBridge().verifyAndCacheNodePath(finalPath);
+                    context.getCodexSDKBridge().setNodeExecutable(finalPath);
+                    verifySuccess = true;
+                }
             } else {
                 props.setValue(NODE_PATH_PROPERTY_KEY, path);
-                // 同时设置 Claude 和 Codex 的 Node.js 路径
-                context.getClaudeSDKBridge().setNodeExecutable(path);
+                NodeDetectionResult result = context.getClaudeSDKBridge().verifyAndCacheNodePath(path);
                 context.getCodexSDKBridge().setNodeExecutable(path);
                 LOG.info("[SettingsHandler] Updated manual Node.js path from settings: " + path);
-                effectivePath = path;
+                finalPath = path;
+                if (result != null && result.isFound()) {
+                    versionToSend = result.getNodeVersion();
+                    verifySuccess = true;
+                } else {
+                    failureMsg = result != null ? result.getErrorMessage() : "无法验证指定的 Node.js 路径";
+                }
             }
 
-            final String finalPath = effectivePath != null ? effectivePath : "";
+            final boolean successFlag = verifySuccess;
+            final String failureMsgFinal = failureMsg;
+            final String finalPathToSend = finalPath;
+            final String finalVersionToSend = versionToSend;
+
             ApplicationManager.getApplication().invokeLater(() -> {
-                callJavaScript("window.updateNodePath", escapeJs(finalPath));
-                callJavaScript("window.showSwitchSuccess", escapeJs("Node.js 路径已保存。\n\n如果环境检查仍然失败，请关闭并重新打开工具窗口后重试。"));
+                JsonObject response = new JsonObject();
+                response.addProperty("path", finalPathToSend);
+                response.addProperty("version", finalVersionToSend);
+                response.addProperty("minVersion", NodeDetector.MIN_NODE_MAJOR_VERSION);
+                callJavaScript("window.updateNodePath", escapeJs(gson.toJson(response)));
+
+                if (successFlag) {
+                    callJavaScript("window.showSwitchSuccess", escapeJs("Node.js 路径已保存。\n\n如果环境检查仍然失败，请关闭并重新打开工具窗口后重试。"));
+                } else {
+                    String msg = failureMsgFinal != null ? failureMsgFinal : "无法验证指定的 Node.js 路径";
+                    callJavaScript("window.showError", escapeJs("保存的 Node.js 路径无效: " + msg));
+                }
             });
         } catch (Exception e) {
             LOG.error("[SettingsHandler] Failed to set Node.js path: " + e.getMessage(), e);
@@ -418,17 +530,21 @@ public class SettingsHandler extends BaseMessageHandler {
     }
 
     /**
-     * 获取使用统计数据
+     * Get usage statistics.
+     * Supports both Claude and Codex providers.
      */
     private void handleGetUsageStatistics(String content) {
         CompletableFuture.runAsync(() -> {
             try {
                 String projectPath = "all";
+                String provider = "claude"; // Default to Claude
 
                 if (content != null && !content.isEmpty() && !content.equals("{}")) {
                     try {
                         Gson gson = new Gson();
                         JsonObject json = gson.fromJson(content, JsonObject.class);
+
+                        // Parse scope
                         if (json.has("scope")) {
                             String scope = json.get("scope").getAsString();
                             if ("current".equals(scope)) {
@@ -436,6 +552,11 @@ public class SettingsHandler extends BaseMessageHandler {
                             } else {
                                 projectPath = "all";
                             }
+                        }
+
+                        // Parse provider (claude or codex)
+                        if (json.has("provider")) {
+                            provider = json.get("provider").getAsString();
                         }
                     } catch (Exception e) {
                         if ("current".equals(content)) {
@@ -446,27 +567,28 @@ public class SettingsHandler extends BaseMessageHandler {
                     }
                 }
 
-                ClaudeHistoryReader reader = new ClaudeHistoryReader();
-                ClaudeHistoryReader.ProjectStatistics stats = reader.getProjectStatistics(projectPath);
+                // Use corresponding reader based on provider
+                String json;
+                if ("codex".equals(provider)) {
+                    CodexHistoryReader reader = new CodexHistoryReader();
+                    CodexHistoryReader.ProjectStatistics stats = reader.getProjectStatistics(projectPath);
 
-                Gson gson = new Gson();
-                String json = gson.toJson(stats);
+                    // Debug logging for Codex statistics
+                    LOG.info("[SettingsHandler] Codex statistics - sessions: " + stats.totalSessions +
+                             ", cost: " + stats.estimatedCost +
+                             ", input tokens: " + stats.totalUsage.inputTokens +
+                             ", output tokens: " + stats.totalUsage.outputTokens +
+                             ", cache read tokens: " + stats.totalUsage.cacheReadTokens +
+                             ", total tokens: " + stats.totalUsage.totalTokens);
 
-                int totalTokens = 0;
-                if (stats != null && stats.totalUsage != null) {
-                    totalTokens = stats.totalUsage.inputTokens + stats.totalUsage.outputTokens;
+                    Gson gson = new Gson();
+                    json = gson.toJson(stats);
+                } else {
+                    ClaudeHistoryReader reader = new ClaudeHistoryReader();
+                    ClaudeHistoryReader.ProjectStatistics stats = reader.getProjectStatistics(projectPath);
+                    Gson gson = new Gson();
+                    json = gson.toJson(stats);
                 }
-                final int MONTHLY_TOKEN_LIMIT = 5_000_000;
-                int percentage = Math.min(100, (int) ((totalTokens * 100.0) / MONTHLY_TOKEN_LIMIT));
-
-                JsonObject usageUpdate = new JsonObject();
-                usageUpdate.addProperty("percentage", percentage);
-                usageUpdate.addProperty("totalTokens", totalTokens);
-                usageUpdate.addProperty("limit", MONTHLY_TOKEN_LIMIT);
-                if (stats != null) {
-                    usageUpdate.addProperty("estimatedCost", stats.estimatedCost);
-                }
-                String usageJson = gson.toJson(usageUpdate);
 
                 final String statsJsonFinal = json;
 
@@ -566,6 +688,98 @@ public class SettingsHandler extends BaseMessageHandler {
             LOG.error("[SettingsHandler] Failed to set working directory: " + e.getMessage(), e);
             ApplicationManager.getApplication().invokeLater(() -> {
                 callJavaScript("window.showError", escapeJs("保存工作目录配置失败: " + e.getMessage()));
+            });
+        }
+    }
+
+    /**
+     * 获取 IDEA 编辑器字体配置
+     */
+    private void handleGetEditorFontConfig() {
+        try {
+            JsonObject fontConfig = FontConfigService.getEditorFontConfig();
+            String fontConfigJson = fontConfig.toString();
+
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.onEditorFontConfigReceived", escapeJs(fontConfigJson));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to get editor font config: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 🔧 获取流式传输配置
+     */
+    private void handleGetStreamingEnabled() {
+        try {
+            String projectPath = context.getProject().getBasePath();
+            if (projectPath == null) {
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    JsonObject response = new JsonObject();
+                    response.addProperty("streamingEnabled", false);
+                    callJavaScript("window.updateStreamingEnabled", escapeJs(new Gson().toJson(response)));
+                });
+                return;
+            }
+
+            com.github.claudecodegui.CodemossSettingsService settingsService =
+                new com.github.claudecodegui.CodemossSettingsService();
+            boolean streamingEnabled = settingsService.getStreamingEnabled(projectPath);
+
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("streamingEnabled", streamingEnabled);
+                callJavaScript("window.updateStreamingEnabled", escapeJs(new Gson().toJson(response)));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to get streaming enabled: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("streamingEnabled", false);
+                callJavaScript("window.updateStreamingEnabled", escapeJs(new Gson().toJson(response)));
+            });
+        }
+    }
+
+    /**
+     * 🔧 设置流式传输配置
+     */
+    private void handleSetStreamingEnabled(String content) {
+        try {
+            String projectPath = context.getProject().getBasePath();
+            if (projectPath == null) {
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    callJavaScript("window.showError", escapeJs("无法获取项目路径"));
+                });
+                return;
+            }
+
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(content, JsonObject.class);
+            boolean streamingEnabled = false;
+
+            if (json != null && json.has("streamingEnabled") && !json.get("streamingEnabled").isJsonNull()) {
+                streamingEnabled = json.get("streamingEnabled").getAsBoolean();
+            }
+
+            com.github.claudecodegui.CodemossSettingsService settingsService =
+                new com.github.claudecodegui.CodemossSettingsService();
+            settingsService.setStreamingEnabled(projectPath, streamingEnabled);
+
+            LOG.info("[SettingsHandler] Set streaming enabled: " + streamingEnabled);
+
+            // 返回更新后的状态
+            final boolean finalStreamingEnabled = streamingEnabled;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("streamingEnabled", finalStreamingEnabled);
+                callJavaScript("window.updateStreamingEnabled", escapeJs(gson.toJson(response)));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to set streaming enabled: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存流式传输配置失败: " + e.getMessage()));
             });
         }
     }
@@ -688,5 +902,61 @@ public class SettingsHandler extends BaseMessageHandler {
         // 如果没有容量后缀，尝试从预定义映射中查找
         // 先尝试完整匹配，如果不存在则使用默认值
         return MODEL_CONTEXT_LIMITS.getOrDefault(model, 200_000);
+    }
+
+    /**
+     * Get send shortcut setting
+     */
+    private void handleGetSendShortcut() {
+        try {
+            PropertiesComponent props = PropertiesComponent.getInstance();
+            String sendShortcut = props.getValue(SEND_SHORTCUT_PROPERTY_KEY, "enter");
+
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("sendShortcut", sendShortcut);
+                callJavaScript("window.updateSendShortcut", escapeJs(new Gson().toJson(response)));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to get send shortcut: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Set send shortcut setting
+     */
+    private void handleSetSendShortcut(String content) {
+        try {
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(content, JsonObject.class);
+            String sendShortcut = "enter";
+
+            if (json != null && json.has("sendShortcut") && !json.get("sendShortcut").isJsonNull()) {
+                sendShortcut = json.get("sendShortcut").getAsString();
+            }
+
+            // Validate value
+            if (!"enter".equals(sendShortcut) && !"cmdEnter".equals(sendShortcut)) {
+                sendShortcut = "enter";
+            }
+
+            PropertiesComponent props = PropertiesComponent.getInstance();
+            props.setValue(SEND_SHORTCUT_PROPERTY_KEY, sendShortcut);
+
+            LOG.info("[SettingsHandler] Set send shortcut: " + sendShortcut);
+
+            // Return updated state
+            final String finalSendShortcut = sendShortcut;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                JsonObject response = new JsonObject();
+                response.addProperty("sendShortcut", finalSendShortcut);
+                callJavaScript("window.updateSendShortcut", escapeJs(gson.toJson(response)));
+            });
+        } catch (Exception e) {
+            LOG.error("[SettingsHandler] Failed to set send shortcut: " + e.getMessage(), e);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("window.showError", escapeJs("保存发送快捷键设置失败: " + e.getMessage()));
+            });
+        }
     }
 }

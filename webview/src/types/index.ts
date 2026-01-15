@@ -30,6 +30,7 @@ export interface ClaudeMessage {
   content?: string;
   raw?: ClaudeRawMessage | string;
   timestamp?: string;
+  isStreaming?: boolean; // 🔧 流式传输：标记消息是否正在流式接收中
   [key: string]: unknown;
 }
 
@@ -46,6 +47,7 @@ export interface HistorySessionSummary {
   lastTimestamp?: string;
   isFavorited?: boolean;
   favoritedAt?: number;
+  provider?: string; // 'claude' 或 'codex'
 }
 
 export interface HistoryData {

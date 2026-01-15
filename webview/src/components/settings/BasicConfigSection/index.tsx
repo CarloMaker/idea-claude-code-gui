@@ -30,10 +30,23 @@ interface BasicConfigSectionProps {
   onNodePathChange: (path: string) => void;
   onSaveNodePath: () => void;
   savingNodePath: boolean;
+  nodeVersion?: string | null;
+  minNodeVersion?: number;
   workingDirectory?: string;
   onWorkingDirectoryChange?: (dir: string) => void;
   onSaveWorkingDirectory?: () => void;
   savingWorkingDirectory?: boolean;
+  editorFontConfig?: {
+    fontFamily: string;
+    fontSize: number;
+    lineSpacing: number;
+  };
+  // 🔧 流式传输配置
+  streamingEnabled?: boolean;
+  onStreamingEnabledChange?: (enabled: boolean) => void;
+  // 发送快捷键配置
+  sendShortcut?: 'enter' | 'cmdEnter';
+  onSendShortcutChange?: (shortcut: 'enter' | 'cmdEnter') => void;
 }
 
 const BasicConfigSection = ({
@@ -45,12 +58,36 @@ const BasicConfigSection = ({
   onNodePathChange,
   onSaveNodePath,
   savingNodePath,
+  nodeVersion,
+  minNodeVersion = 18,
   workingDirectory = '',
   onWorkingDirectoryChange = () => {},
   onSaveWorkingDirectory = () => {},
   savingWorkingDirectory = false,
+  editorFontConfig,
+  // 🔧 流式传输配置
+  streamingEnabled = false,
+  onStreamingEnabledChange = () => {},
+  // 发送快捷键配置
+  sendShortcut = 'enter',
+  onSendShortcutChange = () => {},
 }: BasicConfigSectionProps) => {
   const { t, i18n } = useTranslation();
+
+  // 解析主版本号
+  const parseMajorVersion = (version: string | null | undefined): number => {
+    if (!version) return 0;
+    const versionStr = version.startsWith('v') ? version.substring(1) : version;
+    const dotIndex = versionStr.indexOf('.');
+    if (dotIndex > 0) {
+      return parseInt(versionStr.substring(0, dotIndex), 10) || 0;
+    }
+    return parseInt(versionStr, 10) || 0;
+  };
+
+  // 检查版本是否过低
+  const majorVersion = parseMajorVersion(nodeVersion);
+  const isVersionTooLow = nodeVersion && majorVersion > 0 && majorVersion < minNodeVersion;
 
   // 当前语言
   const currentLanguage = i18n.language || 'zh';
@@ -63,6 +100,7 @@ const BasicConfigSection = ({
     { value: 'hi', label: 'settings.basic.language.hindi' },
     { value: 'es', label: 'settings.basic.language.spanish' },
     { value: 'fr', label: 'settings.basic.language.french' },
+    { value: 'ja', label: 'settings.basic.language.japanese' },
   ];
 
   // 切换语言
@@ -70,6 +108,8 @@ const BasicConfigSection = ({
     const language = event.target.value;
     i18n.changeLanguage(language);
     localStorage.setItem('language', language);
+    // Mark that user has manually set the language, so IDEA language won't override it
+    localStorage.setItem('languageManuallySet', 'true');
   };
 
   return (
@@ -164,12 +204,38 @@ const BasicConfigSection = ({
         </select>
       </div>
 
+      {/* IDEA 编辑器字体展示 - 只读 */}
+      <div className={styles.editorFontSection}>
+        <div className={styles.fieldHeader}>
+          <span className="codicon codicon-symbol-text" />
+          <span className={styles.fieldLabel}>{t('settings.basic.editorFont.label')}</span>
+        </div>
+        <div className={styles.fontInfoDisplay}>
+          {editorFontConfig?.fontFamily || '-'}
+        </div>
+        <small className={styles.formHint}>
+          <span className="codicon codicon-info" />
+          <span>{t('settings.basic.editorFont.hint')}</span>
+        </small>
+      </div>
+
       {/* Node.js 路径配置 */}
       <div className={styles.nodePathSection}>
         <div className={styles.fieldHeader}>
           <span className="codicon codicon-terminal" />
           <span className={styles.fieldLabel}>{t('settings.basic.nodePath.label')}</span>
+          {nodeVersion && (
+            <span className={`${styles.versionBadge} ${isVersionTooLow ? styles.versionBadgeError : styles.versionBadgeOk}`}>
+              {nodeVersion}
+            </span>
+          )}
         </div>
+        {isVersionTooLow && (
+          <div className={styles.versionWarning}>
+            <span className="codicon codicon-warning" />
+            {t('settings.basic.nodePath.versionTooLow', { minVersion: minNodeVersion })}
+          </div>
+        )}
         <div className={styles.nodePathInputWrapper}>
           <input
             type="text"
@@ -232,6 +298,69 @@ const BasicConfigSection = ({
             {t('settings.basic.workingDirectory.hint')}
           </span>
         </small>
+      </div>
+
+      {/* 🔧 流式传输配置 */}
+      <div className={styles.streamingSection}>
+        <div className={styles.fieldHeader}>
+          <span className="codicon codicon-sync" />
+          <span className={styles.fieldLabel}>{t('settings.basic.streaming.label')}</span>
+        </div>
+        <label className={styles.toggleWrapper}>
+          <input
+            type="checkbox"
+            className={styles.toggleInput}
+            checked={streamingEnabled}
+            onChange={(e) => onStreamingEnabledChange(e.target.checked)}
+          />
+          <span className={styles.toggleSlider} />
+          <span className={styles.toggleLabel}>
+            {streamingEnabled
+              ? t('settings.basic.streaming.enabled')
+              : t('settings.basic.streaming.disabled')}
+          </span>
+        </label>
+        <small className={styles.formHint}>
+          <span className="codicon codicon-info" />
+          <span>{t('settings.basic.streaming.hint')}</span>
+        </small>
+      </div>
+
+      {/* 发送快捷键配置 */}
+      <div className={styles.sendShortcutSection}>
+        <div className={styles.fieldHeader}>
+          <span className="codicon codicon-keyboard" />
+          <span className={styles.fieldLabel}>{t('settings.basic.sendShortcut.label')}</span>
+        </div>
+        <div className={styles.themeGrid}>
+          {/* Enter 发送 */}
+          <div
+            className={`${styles.themeCard} ${sendShortcut === 'enter' ? styles.active : ''}`}
+            onClick={() => onSendShortcutChange('enter')}
+          >
+            {sendShortcut === 'enter' && (
+              <div className={styles.checkBadge}>
+                <span className="codicon codicon-check" />
+              </div>
+            )}
+            <div className={styles.themeCardTitle}>{t('settings.basic.sendShortcut.enter')}</div>
+            <div className={styles.themeCardDesc}>{t('settings.basic.sendShortcut.enterDesc')}</div>
+          </div>
+
+          {/* Cmd/Ctrl+Enter 发送 */}
+          <div
+            className={`${styles.themeCard} ${sendShortcut === 'cmdEnter' ? styles.active : ''}`}
+            onClick={() => onSendShortcutChange('cmdEnter')}
+          >
+            {sendShortcut === 'cmdEnter' && (
+              <div className={styles.checkBadge}>
+                <span className="codicon codicon-check" />
+              </div>
+            )}
+            <div className={styles.themeCardTitle}>{t('settings.basic.sendShortcut.cmdEnter')}</div>
+            <div className={styles.themeCardDesc}>{t('settings.basic.sendShortcut.cmdEnterDesc')}</div>
+          </div>
+        </div>
       </div>
     </div>
   );

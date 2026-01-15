@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import MarkdownBlock from './components/MarkdownBlock';
+import CollapsibleTextBlock from './components/CollapsibleTextBlock';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
+import { BlinkingLogo } from './components/BlinkingLogo';
+import { AnimatedText } from './components/AnimatedText';
+import type { SettingsTab } from './components/settings/SettingsSidebar';
 import ConfirmDialog from './components/ConfirmDialog';
 import PermissionDialog, { type PermissionRequest } from './components/PermissionDialog';
+import AskUserQuestionDialog, { type AskUserQuestionRequest } from './components/AskUserQuestionDialog';
+import RewindDialog, { type RewindRequest } from './components/RewindDialog';
+import RewindSelectDialog, { type RewindableMessage } from './components/RewindSelectDialog';
+import { rewindFiles } from './utils/bridge';
 import { ChatInputBox } from './components/ChatInputBox';
 import { CLAUDE_MODELS, CODEX_MODELS } from './components/ChatInputBox/types';
-import type { Attachment, PermissionMode } from './components/ChatInputBox/types';
+import type { Attachment, PermissionMode, ReasoningEffort, SelectedAgent } from './components/ChatInputBox/types';
 import { setupSlashCommandsCallback, resetSlashCommandsState, resetFileReferenceState } from './components/ChatInputBox/providers';
 import {
   BashToolBlock,
@@ -18,11 +26,11 @@ import {
   TodoListBlock,
 } from './components/toolBlocks';
 import { BackIcon } from './components/Icons';
-import { Claude, OpenAI } from '@lobehub/icons';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import WaitingIndicator from './components/WaitingIndicator';
 import { ScrollControl } from './components/ScrollControl';
 import { APP_VERSION } from './version/version';
+import { extractMarkdownContent, copyToClipboard } from './utils/copyUtils';
 import type {
   ClaudeContentBlock,
   ClaudeMessage,
@@ -70,27 +78,64 @@ const App = () => {
   const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
+  const [streamingActive, setStreamingActive] = useState(false);
   const [currentView, setCurrentView] = useState<ViewMode>('chat');
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
   const [historyData, setHistoryData] = useState<HistoryData | null>(null);
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
   const [showInterruptConfirm, setShowInterruptConfirm] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // 输入框草稿内容（页面切换时保持）
+  const [draftInput, setDraftInput] = useState('');
+  // 标志位：是否抑制下一次 updateStatus 触发的 toast（用于删除当前会话后自动创建新会话的场景）
+  const suppressNextStatusToastRef = useRef(false);
 
   // 权限弹窗状态
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const [currentPermissionRequest, setCurrentPermissionRequest] = useState<PermissionRequest | null>(null);
+  const permissionDialogOpenRef = useRef(false);
+  const currentPermissionRequestRef = useRef<PermissionRequest | null>(null);
+  const pendingPermissionRequestsRef = useRef<PermissionRequest[]>([]);
+
+  // AskUserQuestion 弹窗状态
+  const [askUserQuestionDialogOpen, setAskUserQuestionDialogOpen] = useState(false);
+  const [currentAskUserQuestionRequest, setCurrentAskUserQuestionRequest] = useState<AskUserQuestionRequest | null>(null);
+  const askUserQuestionDialogOpenRef = useRef(false);
+  const currentAskUserQuestionRequestRef = useRef<AskUserQuestionRequest | null>(null);
+  const pendingAskUserQuestionRequestsRef = useRef<AskUserQuestionRequest[]>([]);
+
+  // Rewind 弹窗状态
+  const [rewindDialogOpen, setRewindDialogOpen] = useState(false);
+  const [currentRewindRequest, setCurrentRewindRequest] = useState<RewindRequest | null>(null);
+  const [isRewinding, setIsRewinding] = useState(false);
+  // Rewind 选择弹窗状态
+  const [rewindSelectDialogOpen, setRewindSelectDialogOpen] = useState(false);
 
   // ChatInputBox 相关状态
   const [currentProvider, setCurrentProvider] = useState('claude');
   const [selectedClaudeModel, setSelectedClaudeModel] = useState(CLAUDE_MODELS[0].id);
   const [selectedCodexModel, setSelectedCodexModel] = useState(CODEX_MODELS[0].id);
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+  const [claudePermissionMode, setClaudePermissionMode] = useState<PermissionMode>('bypassPermissions');
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('bypassPermissions');
+  // Codex reasoning effort (thinking depth)
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium');
   const [usagePercentage, setUsagePercentage] = useState(0);
   const [usageUsedTokens, setUsageUsedTokens] = useState<number | undefined>(undefined);
   const [usageMaxTokens, setUsageMaxTokens] = useState<number | undefined>(undefined);
   const [, setProviderConfigVersion] = useState(0);
   const [activeProviderConfig, setActiveProviderConfig] = useState<ProviderConfig | null>(null);
   const [claudeSettingsAlwaysThinkingEnabled, setClaudeSettingsAlwaysThinkingEnabled] = useState(true);
+  const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
+  // 🔧 流式传输开关状态（同步设置页面）
+  const [streamingEnabledSetting, setStreamingEnabledSetting] = useState(false);
+  // 发送快捷键设置
+  const [sendShortcut, setSendShortcut] = useState<'enter' | 'cmdEnter'>('enter');
+
+  // 🔧 SDK 安装状态（用于在未安装时禁止提问）
+  const [sdkStatus, setSdkStatus] = useState<Record<string, { installed?: boolean; status?: string }>>({});
+  const [sdkStatusLoaded, setSdkStatusLoaded] = useState(false); // 标记 SDK 状态是否已从后端加载
 
   // 使用 useRef 存储最新的 provider 值，避免回调中的闭包问题
   const currentProviderRef = useRef(currentProvider);
@@ -104,10 +149,98 @@ const App = () => {
   // 根据当前提供商选择显示的模型
   const selectedModel = currentProvider === 'codex' ? selectedCodexModel : selectedClaudeModel;
 
+  // 🔧 根据当前提供商判断对应的 SDK 是否已安装
+  const currentSdkInstalled = (() => {
+    // 状态未加载时，返回 false（显示加载中或未安装提示）
+    if (!sdkStatusLoaded) return false;
+    // 提供商 -> SDK 映射
+    const providerToSdk: Record<string, string> = {
+      claude: 'claude-sdk',
+      anthropic: 'claude-sdk',
+      bedrock: 'claude-sdk',
+      codex: 'codex-sdk',
+      openai: 'codex-sdk',
+    };
+    const sdkId = providerToSdk[currentProvider] || 'claude-sdk';
+    const status = sdkStatus[sdkId];
+    // 检查 status 字段（优先）或 installed 字段
+    return status?.status === 'installed' || status?.installed === true;
+  })();
+
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   // 追踪用户是否在底部（用于判断是否需要自动滚动）
   const isUserAtBottomRef = useRef(true);
+  // 追踪上次按下 ESC 的时间（用于双击 ESC 快捷键）
+  const lastEscPressTimeRef = useRef<number>(0);
+
+  // 🔧 流式传输状态
+  // 使用 useRef 累积流式内容，避免频繁状态更新
+  const streamingContentRef = useRef('');
+  const isStreamingRef = useRef(false);
+  const useBackendStreamingRenderRef = useRef(false);
+  // 🔧 标记是否正在自动滚动（防止 scroll 事件误判）
+  const isAutoScrollingRef = useRef(false);
+  const autoExpandedThinkingKeysRef = useRef<Set<string>>(new Set());
+  // 🔧 流式文本：按“阶段”切分（工具调用前/后等）
+  const streamingTextSegmentsRef = useRef<string[]>([]);
+  const activeTextSegmentIndexRef = useRef<number>(-1);
+  // 🔧 流式思考：支持多段 thinking（例如工具调用前后多次思考）
+  const streamingThinkingSegmentsRef = useRef<string[]>([]);
+  const activeThinkingSegmentIndexRef = useRef<number>(-1);
+  // 🔧 工具调用计数：用于识别“新 tool_use”边界，避免重复重置分段
+  const seenToolUseCountRef = useRef(0);
+  // 🔧 真正的节流控制（分离 content 和 thinking，避免互相干扰）
+  // 🔧 追踪流式消息的索引，用于在 updateMessages 后仍能正确定位
+  const streamingMessageIndexRef = useRef<number>(-1);
+  const contentUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thinkingUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastContentUpdateRef = useRef(0);  // 上次 content 更新时间
+  const lastThinkingUpdateRef = useRef(0); // 上次 thinking 更新时间
+  const THROTTLE_INTERVAL = 50; // 50ms 节流间隔
+
+  useEffect(() => {
+    permissionDialogOpenRef.current = permissionDialogOpen;
+    currentPermissionRequestRef.current = currentPermissionRequest;
+  }, [permissionDialogOpen, currentPermissionRequest]);
+
+  useEffect(() => {
+    askUserQuestionDialogOpenRef.current = askUserQuestionDialogOpen;
+    currentAskUserQuestionRequestRef.current = currentAskUserQuestionRequest;
+  }, [askUserQuestionDialogOpen, currentAskUserQuestionRequest]);
+
+  const openPermissionDialog = (request: PermissionRequest) => {
+    currentPermissionRequestRef.current = request;
+    permissionDialogOpenRef.current = true;
+    setCurrentPermissionRequest(request);
+    setPermissionDialogOpen(true);
+  };
+
+  const openAskUserQuestionDialog = (request: AskUserQuestionRequest) => {
+    currentAskUserQuestionRequestRef.current = request;
+    askUserQuestionDialogOpenRef.current = true;
+    setCurrentAskUserQuestionRequest(request);
+    setAskUserQuestionDialogOpen(true);
+  };
+
+  useEffect(() => {
+    if (permissionDialogOpen) return;
+    if (currentPermissionRequest) return;
+    const next = pendingPermissionRequestsRef.current.shift();
+    if (next) {
+      openPermissionDialog(next);
+    }
+  }, [permissionDialogOpen, currentPermissionRequest]);
+
+  useEffect(() => {
+    if (askUserQuestionDialogOpen) return;
+    if (currentAskUserQuestionRequest) return;
+    const next = pendingAskUserQuestionRequestsRef.current.shift();
+    if (next) {
+      openAskUserQuestionDialog(next);
+    }
+  }, [askUserQuestionDialogOpen, currentAskUserQuestionRequest]);
 
   const syncActiveProviderModelMapping = (provider?: ProviderConfig | null) => {
     if (typeof window === 'undefined' || !window.localStorage) return;
@@ -168,6 +301,7 @@ const App = () => {
       let restoredProvider = 'claude';
       let restoredClaudeModel = CLAUDE_MODELS[0].id;
       let restoredCodexModel = CODEX_MODELS[0].id;
+      let initialPermissionMode: PermissionMode = 'bypassPermissions';
 
       if (saved) {
         const state = JSON.parse(saved);
@@ -176,6 +310,9 @@ const App = () => {
         if (['claude', 'codex'].includes(state.provider)) {
           restoredProvider = state.provider;
           setCurrentProvider(state.provider);
+          if (state.provider === 'codex') {
+            initialPermissionMode = 'bypassPermissions';
+          }
         }
 
         // 验证并恢复 Claude 模型
@@ -191,6 +328,8 @@ const App = () => {
         }
       }
 
+      setPermissionMode(initialPermissionMode);
+
       // 初始化时同步模型状态到后端，确保前后端一致
       let syncRetryCount = 0;
       const MAX_SYNC_RETRIES = 30; // 最多重试30次（3秒）
@@ -202,6 +341,7 @@ const App = () => {
           // 再同步对应的模型
           const modelToSync = restoredProvider === 'codex' ? restoredCodexModel : restoredClaudeModel;
           sendBridgeMessage('set_model', modelToSync);
+          sendBridgeMessage('set_mode', initialPermissionMode);
           console.log('[Frontend] Synced model state to backend:', { provider: restoredProvider, model: modelToSync });
         } else {
           // 如果 sendToJava 还没准备好，稍后重试
@@ -233,6 +373,36 @@ const App = () => {
     }
   }, [currentProvider, selectedClaudeModel, selectedCodexModel]);
 
+  // 加载选中的智能体
+  useEffect(() => {
+    let retryCount = 0;
+    const MAX_RETRIES = 10; // 减少到10次，总共1秒
+    let timeoutId: number | undefined;
+
+    const loadSelectedAgent = () => {
+      if (window.sendToJava) {
+        sendBridgeMessage('get_selected_agent');
+        console.log('[Frontend] Requested selected agent');
+      } else {
+        retryCount++;
+        if (retryCount < MAX_RETRIES) {
+          timeoutId = window.setTimeout(loadSelectedAgent, 100);
+        } else {
+          console.warn('[Frontend] Failed to load selected agent: bridge not available after', MAX_RETRIES, 'retries');
+          // 即使加载失败，也不影响其他功能的使用
+        }
+      }
+    };
+
+    timeoutId = window.setTimeout(loadSelectedAgent, 200); // 减少初始延迟到200ms
+
+    return () => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
   // Toast helper functions
   const addToast = (message: string, type: ToastMessage['type'] = 'info') => {
     // Don't show toast for default status
@@ -246,7 +416,186 @@ const App = () => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
+  // Rewind 相关处理函数
+  const handleRewindClick = (messageIndex: number, message: ClaudeMessage) => {
+    if (!currentSessionId) {
+      addToast(t('rewind.notAvailable'), 'warning');
+      return;
+    }
+
+    const isToolResultOnlyUserMessage = (msg: ClaudeMessage) => {
+      if (msg.type !== 'user') return false;
+      if ((msg.content || '').trim() === '[tool_result]') return true;
+      const raw = msg.raw;
+      if (!raw || typeof raw === 'string') return false;
+      const content = (raw as any).content ?? (raw as any).message?.content;
+      if (!Array.isArray(content)) return false;
+      return content.some((block: any) => block && block.type === 'tool_result');
+    };
+
+    let targetIndex = messageIndex;
+    let targetMessage: ClaudeMessage = message;
+    if (isToolResultOnlyUserMessage(message)) {
+      for (let i = messageIndex - 1; i >= 0; i -= 1) {
+        const candidate = mergedMessages[i];
+        if (candidate.type !== 'user') continue;
+        if (isToolResultOnlyUserMessage(candidate)) continue;
+        targetIndex = i;
+        targetMessage = candidate;
+        break;
+      }
+    }
+
+    const raw = targetMessage.raw;
+    const uuid = typeof raw === 'object' ? (raw as any)?.uuid : undefined;
+    if (!uuid) {
+      addToast(t('rewind.notAvailable'), 'warning');
+      console.warn('[Rewind] No UUID found in message:', targetMessage);
+      return;
+    }
+
+    // Calculate messages after this one
+    const messagesAfterCount = mergedMessages.length - targetIndex - 1;
+
+    // Get display content for the dialog
+    const content = targetMessage.content || getMessageText(targetMessage);
+    const timestamp = targetMessage.timestamp ? formatTime(targetMessage.timestamp) : undefined;
+
+    setCurrentRewindRequest({
+      sessionId: currentSessionId,
+      userMessageId: uuid,
+      messageContent: content,
+      messageTimestamp: timestamp,
+      messagesAfterCount,
+    });
+    setRewindDialogOpen(true);
+  };
+
+  const handleRewindConfirm = (sessionId: string, userMessageId: string) => {
+    console.log('[Rewind] Confirming rewind:', { sessionId, userMessageId });
+    setIsRewinding(true);
+    rewindFiles(sessionId, userMessageId);
+  };
+
+  const handleRewindCancel = () => {
+    // Allow cancel even while rewinding (user can dismiss the dialog)
+    if (isRewinding) {
+      setIsRewinding(false);
+    }
+    setRewindDialogOpen(false);
+    setCurrentRewindRequest(null);
+  };
+
+  // Open the rewind select dialog
+  const handleOpenRewindSelectDialog = () => {
+    setRewindSelectDialogOpen(true);
+  };
+
+  // Handle selection from the rewind select dialog
+  const handleRewindSelect = (item: RewindableMessage) => {
+    setRewindSelectDialogOpen(false);
+    // Trigger the confirmation dialog
+    handleRewindClick(item.messageIndex, item.message);
+  };
+
+  // Close the rewind select dialog
+  const handleRewindSelectCancel = () => {
+    setRewindSelectDialogOpen(false);
+  };
+
   useEffect(() => {
+    const findLastAssistantIndex = (list: ClaudeMessage[]) => {
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        if (list[i]?.type === 'assistant') return i;
+      }
+      return -1;
+    };
+
+    const extractRawBlocks = (raw: unknown): any[] => {
+      if (!raw || typeof raw !== 'object') return [];
+      const rawObj: any = raw;
+      const blocks = rawObj.content ?? rawObj.message?.content;
+      return Array.isArray(blocks) ? blocks : [];
+    };
+
+    const buildStreamingBlocks = (existingBlocks: any[]) => {
+      const toolUseBlocks = existingBlocks.filter((b) => b?.type === 'tool_use');
+      const otherBlocks = existingBlocks.filter(
+        (b) => b && b.type !== 'text' && b.type !== 'thinking' && b.type !== 'tool_use',
+      );
+
+      const textSegments = streamingTextSegmentsRef.current;
+      const thinkingSegments = streamingThinkingSegmentsRef.current;
+      const phasesCount = Math.max(textSegments.length, thinkingSegments.length, toolUseBlocks.length + 1);
+
+      const blocks: any[] = [];
+      for (let phase = 0; phase < phasesCount; phase += 1) {
+        const thinking = thinkingSegments[phase];
+        if (typeof thinking === 'string' && thinking.length > 0) {
+          // 🔧 更彻底地清理换行符：合并连续空白行，去除首尾空白
+          const normalizedThinking = thinking
+            .replace(/\r\n?/g, '\n')          // 统一换行符
+            .replace(/\n[ \t]*\n+/g, '\n')    // 移除空白行（包含仅空格/Tab 的行）
+            .replace(/^\n+/, '')              // 去除开头换行
+            .replace(/\n+$/, '');             // 去除结尾换行
+          if (normalizedThinking.length > 0) {
+            blocks.push({ type: 'thinking', thinking: normalizedThinking });
+          }
+        }
+        const text = textSegments[phase];
+        if (typeof text === 'string' && text.length > 0) {
+          blocks.push({ type: 'text', text });
+        }
+        if (phase < toolUseBlocks.length) {
+          blocks.push(toolUseBlocks[phase]);
+        }
+      }
+
+      if (otherBlocks.length > 0) {
+        blocks.push(...otherBlocks);
+      }
+      return blocks;
+    };
+
+    const getOrCreateStreamingAssistantIndex = (list: ClaudeMessage[]) => {
+      const currentIdx = streamingMessageIndexRef.current;
+      if (currentIdx >= 0 && currentIdx < list.length && list[currentIdx]?.type === 'assistant') {
+        return currentIdx;
+      }
+      const lastAssistantIdx = findLastAssistantIndex(list);
+      if (lastAssistantIdx >= 0) {
+        streamingMessageIndexRef.current = lastAssistantIdx;
+        return lastAssistantIdx;
+      }
+      // 没有 assistant：追加一个占位
+      streamingMessageIndexRef.current = list.length;
+      list.push({
+        type: 'assistant',
+        content: '',
+        isStreaming: true,
+        timestamp: new Date().toISOString(),
+        raw: { message: { content: [] } } as any,
+      });
+      return streamingMessageIndexRef.current;
+    };
+
+    const patchAssistantForStreaming = (assistant: ClaudeMessage) => {
+      const existingRaw = (assistant.raw && typeof assistant.raw === 'object') ? (assistant.raw as any) : { message: { content: [] } };
+      const existingBlocks = extractRawBlocks(existingRaw);
+      const newBlocks = buildStreamingBlocks(existingBlocks);
+
+      const rawPatched = existingRaw.message
+        ? { ...existingRaw, message: { ...(existingRaw.message || {}), content: newBlocks } }
+        : { ...existingRaw, content: newBlocks };
+
+      return {
+        ...assistant,
+        content: streamingContentRef.current,
+        raw: rawPatched,
+        isStreaming: true,
+      } as ClaudeMessage;
+    };
+
     window.updateMessages = (json) => {
       // const timestamp = Date.now();
       // const sendTime = (window as any).__lastMessageSendTime;
@@ -255,38 +604,88 @@ const App = () => {
       // }
       try {
         const parsed = JSON.parse(json) as ClaudeMessage[];
-        setMessages(parsed);
+
+        // 🔧 禁用后端渲染模式，使用 onContentDelta 进行流式渲染
+        // 这样可以确保 Markdown 在流式输出时正确渲染
+        // if (isStreamingRef.current && currentProviderRef.current === 'claude') {
+        //   const lastAssistantIdx = findLastAssistantIndex(parsed);
+        //   if (lastAssistantIdx >= 0) {
+        //     const rawBlocks = normalizeBlocks(parsed[lastAssistantIdx].raw) || [];
+        //     const hasStreamingBlocks = rawBlocks.some(
+        //       (block) => block?.type === 'text' || block?.type === 'thinking',
+        //     );
+        //     if (hasStreamingBlocks) {
+        //       useBackendStreamingRenderRef.current = true;
+        //       streamingMessageIndexRef.current = lastAssistantIdx;
+        //     }
+        //   }
+        // }
+
+        setMessages((prev) => {
+          if (!isStreamingRef.current) {
+            return parsed;
+          }
+
+          if (useBackendStreamingRenderRef.current) {
+            return parsed;
+          }
+
+          const lastAssistantIdx = findLastAssistantIndex(parsed);
+          if (lastAssistantIdx < 0) {
+            return parsed;
+          }
+
+          const lastAssistant = parsed[lastAssistantIdx];
+          const lastAssistantBlocks = extractRawBlocks(lastAssistant.raw);
+          const toolUseCount = lastAssistantBlocks.filter((b) => b?.type === 'tool_use').length;
+          if (toolUseCount < seenToolUseCountRef.current) {
+            seenToolUseCountRef.current = toolUseCount;
+          }
+          const hasNewToolUse = toolUseCount > seenToolUseCountRef.current;
+          const hasToolUse = toolUseCount > 0;
+
+          // 工具调用是一个“阶段”边界：后续文本/思考应该进入新的段落
+          if (hasNewToolUse) {
+            seenToolUseCountRef.current = toolUseCount;
+            activeTextSegmentIndexRef.current = -1;
+            activeThinkingSegmentIndexRef.current = -1;
+          }
+
+          // 流式期间：仅当“没有新增消息且最后一条是 assistant 且不含 tool_use”时跳过，避免覆盖流式 UI
+          const isAssistantOnlyRefresh =
+            parsed.length === prev.length &&
+            parsed[parsed.length - 1]?.type === 'assistant' &&
+            !hasToolUse;
+          if (isAssistantOnlyRefresh) {
+            return prev;
+          }
+
+          const patched = [...parsed];
+          const targetIdx = getOrCreateStreamingAssistantIndex(patched);
+          if (targetIdx >= 0 && patched[targetIdx]?.type === 'assistant') {
+            patched[targetIdx] = patchAssistantForStreaming(patched[targetIdx]);
+          }
+          return patched;
+        });
       } catch (error) {
         console.error('[Frontend] Failed to parse messages:', error);
+        console.error('[Frontend] Raw JSON:', json?.substring(0, 500));
       }
     };
 
     window.updateStatus = (text) => {
       setStatus(text);
+      // 检查是否需要抑制 toast（删除当前会话后自动创建新会话的场景）
+      if (suppressNextStatusToastRef.current) {
+        suppressNextStatusToastRef.current = false;
+        return;
+      }
       // Show toast notification for status changes
       addToast(text);
     };
     window.showLoading = (value) => {
       const isLoading = isTruthy(value);
-      // const timestamp = Date.now();
-      // const sendTime = (window as any).__lastMessageSendTime;
-
-      // if (isLoading) {
-      //   console.log(`[Frontend][${timestamp}][PERF] showLoading(true) - 开始加载`);
-      //   if (sendTime) {
-      //     console.log(`[Frontend][${timestamp}][PERF] 距消息发送 ${timestamp - sendTime}ms 后开始显示加载状态`);
-      //   }
-      // } else {
-      //   console.log(`[Frontend][${timestamp}][PERF] showLoading(false) - 加载完成`);
-      //   if (sendTime) {
-      //     console.log(`[Frontend][${timestamp}][PERF] >>> 总耗时: ${timestamp - sendTime}ms <<<`);
-      //     // 清除记录的发送时间
-      //     delete (window as any).__lastMessageSendTime;
-      //   }
-      // }
-
       setLoading(isLoading);
-      // 开始加载时记录时间，结束时清除
       if (isLoading) {
         setLoadingStartTime(Date.now());
       } else {
@@ -298,6 +697,286 @@ const App = () => {
     window.clearMessages = () => setMessages([]);
     window.addErrorMessage = (message) =>
       setMessages((prev) => [...prev, { type: 'error', content: message }]);
+
+    // 添加单条历史消息（用于 Codex 会话加载）
+    window.addHistoryMessage = (message: ClaudeMessage) => {
+      setMessages((prev) => [...prev, message]);
+    };
+
+    // 添加用户消息（用于外部 Quick Fix 功能）
+    // Add user message to chat (for external Quick Fix feature)
+    // Backend now waits for frontend_ready signal before calling this
+    window.addUserMessage = (content: string) => {
+      const userMessage: ClaudeMessage = {
+        type: 'user',
+        content: content || '',
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      // Auto-scroll to bottom to show the user's message
+      isUserAtBottomRef.current = true;
+      requestAnimationFrame(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      });
+    };
+
+    // 🔧 流式传输回调函数
+    // 流式开始时调用
+    window.onStreamStart = () => {
+      console.log('[Frontend] Stream started');
+      streamingContentRef.current = '';
+      isStreamingRef.current = true;
+      // Claude 流式：由后端通过 updateMessages 增量写入 raw blocks 进行渲染
+      useBackendStreamingRenderRef.current = currentProviderRef.current === 'claude';
+      autoExpandedThinkingKeysRef.current.clear();
+      setStreamingActive(true);
+      isUserAtBottomRef.current = true;
+      streamingTextSegmentsRef.current = [];
+      activeTextSegmentIndexRef.current = -1;
+      streamingThinkingSegmentsRef.current = [];
+      activeThinkingSegmentIndexRef.current = -1;
+      seenToolUseCountRef.current = 0;
+
+      // Claude 流式由后端通过 updateMessages 驱动，不需要前端占位消息
+      if (useBackendStreamingRenderRef.current) {
+        return;
+      }
+      // 添加一个占位的 assistant 消息用于流式更新
+      setMessages((prev) => {
+        // 检查最后一条消息是否已经是正在流式的 assistant 消息
+        const last = prev[prev.length - 1];
+        if (last?.type === 'assistant' && last?.isStreaming) {
+          // 🔧 记录流式消息索引
+          streamingMessageIndexRef.current = prev.length - 1;
+          return prev; // 已存在，不重复添加
+        }
+        // 🔧 记录新增的流式消息索引
+        streamingMessageIndexRef.current = prev.length;
+        return [...prev, {
+          type: 'assistant',
+          content: '',
+          isStreaming: true,
+          timestamp: new Date().toISOString()
+        }];
+      });
+    };
+
+    // 内容增量回调 - 🔧 使用索引定位流式消息，避免 isStreaming 被覆盖问题
+    window.onContentDelta = (delta: string) => {
+      if (!isStreamingRef.current) return;
+      streamingContentRef.current += delta;
+      // 收到内容输出，视为当前 thinking 段结束（后续 thinking_delta 将新开一段）
+      activeThinkingSegmentIndexRef.current = -1;
+
+      // 🔧 计算/创建当前文本段（工具调用后会从新段开始）
+      if (activeTextSegmentIndexRef.current < 0) {
+        activeTextSegmentIndexRef.current = streamingTextSegmentsRef.current.length;
+        streamingTextSegmentsRef.current.push('');
+      }
+      streamingTextSegmentsRef.current[activeTextSegmentIndexRef.current] += delta;
+
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastContentUpdateRef.current;
+
+      // 🔧 真正的节流：如果距上次更新超过阈值，立即更新
+      if (timeSinceLastUpdate >= THROTTLE_INTERVAL) {
+        lastContentUpdateRef.current = now;
+        const currentContent = streamingContentRef.current;
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          // 🔧 使用索引定位，而不是检查 isStreaming 标志（避免被 updateMessages 覆盖）
+          const idx = getOrCreateStreamingAssistantIndex(newMessages);
+          if (idx >= 0 && newMessages[idx]?.type === 'assistant') {
+            newMessages[idx] = patchAssistantForStreaming({
+              ...newMessages[idx],
+              content: currentContent,
+              isStreaming: true,
+            });
+          }
+          return newMessages;
+        });
+      } else {
+        // 🔧 如果还没到阈值，确保在阈值到期时更新（不会丢失最后一次更新）
+        if (!contentUpdateTimeoutRef.current) {
+          const remainingTime = THROTTLE_INTERVAL - timeSinceLastUpdate;
+          contentUpdateTimeoutRef.current = setTimeout(() => {
+            contentUpdateTimeoutRef.current = null;
+            lastContentUpdateRef.current = Date.now();
+            const currentContent = streamingContentRef.current;
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const idx = getOrCreateStreamingAssistantIndex(newMessages);
+              if (idx >= 0 && newMessages[idx]?.type === 'assistant') {
+                newMessages[idx] = patchAssistantForStreaming({
+                  ...newMessages[idx],
+                  content: currentContent,
+                  isStreaming: true,
+                });
+              }
+              return newMessages;
+            });
+          }, remainingTime);
+        }
+      }
+    };
+
+    // 思考增量回调 - 🔧 使用索引定位流式消息
+    window.onThinkingDelta = (delta: string) => {
+      if (!isStreamingRef.current) return;
+      // 🔧 统一换行符，但不在这里做过度清理（累积后在 buildStreamingBlocks 中统一处理）
+      const normalizedDelta = delta.replace(/\r\n/g, '\n');
+      // 🔧 多段 thinking：按"阶段"聚合（工具调用前/后分别进入不同段）
+      if (activeThinkingSegmentIndexRef.current < 0) {
+        const phaseIndex = activeTextSegmentIndexRef.current >= 0
+          ? activeTextSegmentIndexRef.current
+          : streamingTextSegmentsRef.current.length; // 工具调用后但文本未开始时，应进入下一段
+        while (streamingThinkingSegmentsRef.current.length <= phaseIndex) {
+          streamingThinkingSegmentsRef.current.push('');
+        }
+        activeThinkingSegmentIndexRef.current = phaseIndex;
+      }
+      streamingThinkingSegmentsRef.current[activeThinkingSegmentIndexRef.current] += normalizedDelta;
+
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastThinkingUpdateRef.current;
+
+      // 更新 UI 的函数
+      const updateThinkingUI = () => {
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const idx = getOrCreateStreamingAssistantIndex(newMessages);
+          if (idx >= 0 && newMessages[idx]?.type === 'assistant') {
+            newMessages[idx] = patchAssistantForStreaming({
+              ...newMessages[idx],
+              isStreaming: true,
+            });
+
+            const rawBlocks = extractRawBlocks(newMessages[idx].raw);
+            let lastThinkingIndex = -1;
+            for (let i = rawBlocks.length - 1; i >= 0; i -= 1) {
+              if (rawBlocks[i]?.type === 'thinking') {
+                lastThinkingIndex = i;
+                break;
+              }
+            }
+            if (lastThinkingIndex >= 0) {
+              const thinkingKey = `${idx}_${lastThinkingIndex}`;
+              setExpandedThinking((prevExpanded) => ({ ...prevExpanded, [thinkingKey]: true }));
+            }
+          }
+          return newMessages;
+        });
+        setIsThinking(true);
+      };
+
+      // 🔧 真正的节流：如果距上次更新超过阈值，立即更新
+      if (timeSinceLastUpdate >= THROTTLE_INTERVAL) {
+        lastThinkingUpdateRef.current = now;
+        updateThinkingUI();
+      } else {
+        // 🔧 如果还没到阈值，确保在阈值到期时更新
+        if (!thinkingUpdateTimeoutRef.current) {
+          const remainingTime = THROTTLE_INTERVAL - timeSinceLastUpdate;
+          thinkingUpdateTimeoutRef.current = setTimeout(() => {
+            thinkingUpdateTimeoutRef.current = null;
+            lastThinkingUpdateRef.current = Date.now();
+            updateThinkingUI();
+          }, remainingTime);
+        }
+      }
+    };
+
+    // 流式结束回调
+    window.onStreamEnd = () => {
+      console.log('[Frontend] Stream ended');
+      const useBackendRender = useBackendStreamingRenderRef.current;
+      isStreamingRef.current = false;
+      useBackendStreamingRenderRef.current = false;
+      setStreamingActive(false);
+      activeThinkingSegmentIndexRef.current = -1;
+      activeTextSegmentIndexRef.current = -1;
+      seenToolUseCountRef.current = 0;
+
+      // 清除节流定时器
+      if (contentUpdateTimeoutRef.current) {
+        clearTimeout(contentUpdateTimeoutRef.current);
+        contentUpdateTimeoutRef.current = null;
+      }
+      if (thinkingUpdateTimeoutRef.current) {
+        clearTimeout(thinkingUpdateTimeoutRef.current);
+        thinkingUpdateTimeoutRef.current = null;
+      }
+
+      if (useBackendRender) {
+        const keysToCollapse = Array.from(autoExpandedThinkingKeysRef.current);
+        autoExpandedThinkingKeysRef.current.clear();
+        if (keysToCollapse.length > 0) {
+          setExpandedThinking((prevExpanded) => {
+            let changed = false;
+            const next = { ...prevExpanded };
+            for (const key of keysToCollapse) {
+              if (next[key]) {
+                next[key] = false;
+                changed = true;
+              }
+            }
+            return changed ? next : prevExpanded;
+          });
+        }
+
+        streamingContentRef.current = '';
+        streamingTextSegmentsRef.current = [];
+        streamingThinkingSegmentsRef.current = [];
+        streamingMessageIndexRef.current = -1;
+        setIsThinking(false);
+        return;
+      }
+
+      // 确保最终内容被写入
+      const finalContent = streamingContentRef.current;
+      // 🔧 捕获当前索引值
+      const targetIdx = streamingMessageIndexRef.current;
+
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        const idx = targetIdx >= 0 && targetIdx < prev.length ? targetIdx : findLastAssistantIndex(newMessages);
+        if (idx >= 0 && newMessages[idx]?.type === 'assistant') {
+          const patched = patchAssistantForStreaming(newMessages[idx]);
+          const rawBlocks = extractRawBlocks(patched.raw);
+          for (let blockIndex = 0; blockIndex < rawBlocks.length; blockIndex += 1) {
+            if (rawBlocks[blockIndex]?.type === 'thinking') {
+              const thinkingKey = `${idx}_${blockIndex}`;
+              setExpandedThinking((prevExpanded) => ({ ...prevExpanded, [thinkingKey]: false }));
+            }
+          }
+          newMessages[idx] = { ...patched, content: finalContent, isStreaming: false };
+        }
+        return newMessages;
+      });
+
+      // 重置流式状态
+      streamingContentRef.current = '';
+      streamingTextSegmentsRef.current = [];
+      streamingThinkingSegmentsRef.current = [];
+      // 🔧 重置索引
+      streamingMessageIndexRef.current = -1;
+      setIsThinking(false);
+    };
+
+    // 设置当前会话 ID（用于 rewind 功能）
+    window.setSessionId = (sessionId: string) => {
+      console.log('[Frontend] Received session ID:', sessionId);
+      setCurrentSessionId(sessionId);
+    };
+
+    // 检查是否有待处理的 sessionId（Java 端可能先于 React 组件挂载）
+    if ((window as any).__pendingSessionId) {
+      console.log('[Frontend] Found pending session ID, applying...');
+      setCurrentSessionId((window as any).__pendingSessionId);
+      delete (window as any).__pendingSessionId;
+    }
 
     // 注册 toast 回调（后端调用）
     window.addToast = (message, type) => {
@@ -358,6 +1037,40 @@ const App = () => {
     resetFileReferenceState(); // 重置文件引用状态，防止 Promise 泄漏
     setupSlashCommandsCallback();
 
+    // 🔧 SDK 状态回调（用于在未安装时禁止提问）
+    // 使用装饰器模式，保存原有回调并扩展，避免与 DependencySection 的回调冲突
+    const originalUpdateDependencyStatus = window.updateDependencyStatus;
+    window.updateDependencyStatus = (jsonStr: string) => {
+      try {
+        const status = JSON.parse(jsonStr);
+        console.log('[Frontend] SDK status updated (App):', status);
+        setSdkStatus(status);
+        setSdkStatusLoaded(true); // 标记状态已加载
+      } catch (error) {
+        console.error('[Frontend] Failed to parse SDK status:', error);
+        setSdkStatusLoaded(true); // 即使解析失败也标记为已加载，避免永久等待
+      }
+      // 如果有原有回调（来自 DependencySection），也调用它
+      if (originalUpdateDependencyStatus && originalUpdateDependencyStatus !== window.updateDependencyStatus) {
+        originalUpdateDependencyStatus(jsonStr);
+      }
+    };
+    // 保存 App 的回调引用，供 DependencySection 使用
+    (window as any)._appUpdateDependencyStatus = window.updateDependencyStatus;
+
+    // 处理 pending 的 SDK 状态（后端可能在 React 初始化前就返回了）
+    if (window.__pendingDependencyStatus) {
+      console.log('[Frontend] Found pending dependency status, applying...');
+      const pending = window.__pendingDependencyStatus;
+      delete window.__pendingDependencyStatus;
+      window.updateDependencyStatus?.(pending);
+    }
+
+    // 初始化请求 SDK 状态
+    if (window.sendToJava) {
+      window.sendToJava('get_dependency_status:');
+    }
+
     // ChatInputBox 相关回调
     window.onUsageUpdate = (json) => {
       try {
@@ -374,18 +1087,22 @@ const App = () => {
       }
     };
 
-    window.onModeChanged = (mode) => {
+    const updateMode = (mode?: PermissionMode, providerOverride?: string) => {
+      const activeProvider = providerOverride || currentProviderRef.current;
+      if (activeProvider === 'codex') {
+        setPermissionMode('bypassPermissions');
+        return;
+      }
       if (mode === 'default' || mode === 'plan' || mode === 'acceptEdits' || mode === 'bypassPermissions') {
         setPermissionMode(mode);
+        setClaudePermissionMode(mode);
       }
     };
 
+    window.onModeChanged = (mode) => updateMode(mode as PermissionMode);
+
     // 后端主动推送权限模式（窗口初始化时调用）
-    window.onModeReceived = (mode) => {
-      if (mode === 'default' || mode === 'plan' || mode === 'acceptEdits' || mode === 'bypassPermissions') {
-        setPermissionMode(mode);
-      }
-    };
+    window.onModeReceived = (mode) => updateMode(mode as PermissionMode);
 
     // 后端主动通知模型变化时调用（使用 ref 避免闭包问题）
       window.onModelChanged = (modelId) => {
@@ -440,6 +1157,26 @@ const App = () => {
       }
     };
 
+    // 🔧 流式传输开关状态同步回调
+    window.updateStreamingEnabled = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        setStreamingEnabledSetting(data.streamingEnabled ?? false);
+      } catch (error) {
+        console.error('[Frontend] Failed to parse streaming config:', error);
+      }
+    };
+
+    // 发送快捷键设置同步回调
+    window.updateSendShortcut = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        setSendShortcut(data.sendShortcut ?? 'enter');
+      } catch (error) {
+        console.error('[Frontend] Failed to parse send shortcut config:', error);
+      }
+    };
+
     // Retry getting active provider
     let retryCount = 0;
     const MAX_RETRIES = 30;
@@ -471,6 +1208,36 @@ const App = () => {
     };
     setTimeout(requestThinkingEnabled, 200);
 
+    // 🔧 请求流式传输初始状态
+    let streamingRetryCount = 0;
+    const MAX_STREAMING_RETRIES = 30;
+    const requestStreamingEnabled = () => {
+      if (window.sendToJava) {
+        sendBridgeMessage('get_streaming_enabled');
+      } else {
+        streamingRetryCount++;
+        if (streamingRetryCount < MAX_STREAMING_RETRIES) {
+          setTimeout(requestStreamingEnabled, 100);
+        }
+      }
+    };
+    setTimeout(requestStreamingEnabled, 200);
+
+    // 请求发送快捷键初始状态
+    let sendShortcutRetryCount = 0;
+    const MAX_SEND_SHORTCUT_RETRIES = 30;
+    const requestSendShortcut = () => {
+      if (window.sendToJava) {
+        sendBridgeMessage('get_send_shortcut');
+      } else {
+        sendShortcutRetryCount++;
+        if (sendShortcutRetryCount < MAX_SEND_SHORTCUT_RETRIES) {
+          setTimeout(requestSendShortcut, 100);
+        }
+      }
+    };
+    setTimeout(requestSendShortcut, 200);
+
     // 权限弹窗回调
     window.showPermissionDialog = (json) => {
       console.log('[PERM_DEBUG][FRONTEND] showPermissionDialog called');
@@ -480,11 +1247,36 @@ const App = () => {
         console.log('[PERM_DEBUG][FRONTEND] Parsed request:', request);
         console.log('[PERM_DEBUG][FRONTEND] channelId:', request.channelId);
         console.log('[PERM_DEBUG][FRONTEND] toolName:', request.toolName);
-        setCurrentPermissionRequest(request);
-        setPermissionDialogOpen(true);
-        console.log('[PERM_DEBUG][FRONTEND] Dialog state set to open');
+        if (permissionDialogOpenRef.current || currentPermissionRequestRef.current) {
+          pendingPermissionRequestsRef.current.push(request);
+          console.log('[PERM_DEBUG][FRONTEND] Dialog busy, queued request. queueSize=', pendingPermissionRequestsRef.current.length);
+        } else {
+          openPermissionDialog(request);
+          console.log('[PERM_DEBUG][FRONTEND] Dialog state set to open');
+        }
       } catch (error) {
         console.error('[PERM_DEBUG][FRONTEND] ERROR: Failed to parse permission request:', error);
+      }
+    };
+
+    // AskUserQuestion 弹窗回调
+    window.showAskUserQuestionDialog = (json) => {
+      console.log('[ASK_USER_QUESTION][FRONTEND] showAskUserQuestionDialog called');
+      console.log('[ASK_USER_QUESTION][FRONTEND] Raw JSON:', json);
+      try {
+        const request = JSON.parse(json) as AskUserQuestionRequest;
+        console.log('[ASK_USER_QUESTION][FRONTEND] Parsed request:', request);
+        console.log('[ASK_USER_QUESTION][FRONTEND] requestId:', request.requestId);
+        console.log('[ASK_USER_QUESTION][FRONTEND] questions count:', request.questions?.length);
+        if (askUserQuestionDialogOpenRef.current || currentAskUserQuestionRequestRef.current) {
+          pendingAskUserQuestionRequestsRef.current.push(request);
+          console.log('[ASK_USER_QUESTION][FRONTEND] Dialog busy, queued request. queueSize=', pendingAskUserQuestionRequestsRef.current.length);
+        } else {
+          openAskUserQuestionDialog(request);
+          console.log('[ASK_USER_QUESTION][FRONTEND] Dialog state set to open');
+        }
+      } catch (error) {
+        console.error('[ASK_USER_QUESTION][FRONTEND] ERROR: Failed to parse request:', error);
       }
     };
 
@@ -526,6 +1318,96 @@ const App = () => {
       console.log('[Frontend] clearSelectionInfo called');
       setContextInfo(null);
     };
+
+    // 接收选中的智能体回调
+    window.onSelectedAgentReceived = (json) => {
+      console.log('[Frontend] onSelectedAgentReceived:', json);
+      try {
+        if (!json || json === 'null' || json === '{}') {
+          setSelectedAgent(null);
+          return;
+        }
+        const data = JSON.parse(json);
+        const agentFromNewShape = data?.agent;
+        const agentFromLegacyShape = data;
+
+        const agentData = agentFromNewShape?.id ? agentFromNewShape : (agentFromLegacyShape?.id ? agentFromLegacyShape : null);
+        if (!agentData) {
+          setSelectedAgent(null);
+          return;
+        }
+
+        setSelectedAgent({
+          id: agentData.id,
+          name: agentData.name || '',
+          prompt: agentData.prompt,
+        });
+      } catch (error) {
+        console.error('[Frontend] Failed to parse selected agent:', error);
+        setSelectedAgent(null);
+      }
+    };
+
+    // 智能体选择变更确认回调
+    window.onSelectedAgentChanged = (json) => {
+      console.log('[Frontend] onSelectedAgentChanged:', json);
+      try {
+        if (!json || json === 'null' || json === '{}') {
+          setSelectedAgent(null);
+          return;
+        }
+
+        const data = JSON.parse(json);
+        if (data?.success === false) {
+          return;
+        }
+
+        const agentData = data?.agent;
+        if (!agentData || !agentData.id) {
+          setSelectedAgent(null);
+          return;
+        }
+
+        setSelectedAgent({
+          id: agentData.id,
+          name: agentData.name || '',
+          prompt: agentData.prompt,
+        });
+      } catch (error) {
+        console.error('[Frontend] Failed to parse selected agent changed:', error);
+      }
+    };
+
+    // Rewind result callback from Java
+    window.onRewindResult = (json: string) => {
+      console.log('[Frontend] onRewindResult:', json);
+      try {
+        const result = JSON.parse(json);
+        console.log('[Frontend] Parsed rewind result:', result);
+
+        setIsRewinding(false);
+        setRewindDialogOpen(false);
+        setCurrentRewindRequest(null);
+
+        if (result.success) {
+          window.addToast?.(
+            t('rewind.successSimple'),
+            'success'
+          );
+        } else {
+          window.addToast?.(
+            result.message || t('rewind.failed'),
+            'error'
+          );
+        }
+      } catch (error) {
+        console.error('[Frontend] Failed to parse rewind result:', error);
+        setIsRewinding(false);
+        setRewindDialogOpen(false);
+        setCurrentRewindRequest(null);
+        window.addToast?.(t('rewind.parseError'), 'error');
+      }
+    };
   }, []); // 移除 currentProvider 依赖，因为现在使用 ref 获取最新值
 
   useEffect(() => {
@@ -539,7 +1421,8 @@ const App = () => {
 
     const requestHistoryData = () => {
       if (window.sendToJava) {
-        sendBridgeMessage('load_history_data');
+        // 传递 provider 参数给后端
+        sendBridgeMessage('load_history_data', currentProvider);
       } else {
         historyRetryCount++;
         if (historyRetryCount < MAX_HISTORY_RETRIES) {
@@ -557,7 +1440,7 @@ const App = () => {
         clearTimeout(currentTimer);
       }
     };
-  }, [currentView]);
+  }, [currentView, currentProvider]); // 添加 currentProvider 依赖，provider 切换时自动刷新历史记录
 
   // 定期获取使用统计
   useEffect(() => {
@@ -589,52 +1472,120 @@ const App = () => {
     if (!container) return;
 
     const handleScroll = () => {
-      // 计算距离底部的距离（容差 50 像素）
+      // 🔧 如果正在自动滚动，跳过判断（防止快速流式输出时误判）
+      if (isAutoScrollingRef.current) return;
+      // 计算距离底部的距离
       const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      // 如果距离底部小于 50 像素，认为用户在底部
-      isUserAtBottomRef.current = distanceFromBottom < 50;
+      // 如果距离底部小于 100 像素，认为用户在底部
+      isUserAtBottomRef.current = distanceFromBottom < 100;
     };
 
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
   }, [currentView]);
 
-  useEffect(() => {
-    // 只有当用户在底部时，才自动滚动到底部
-    if (messagesContainerRef.current && isUserAtBottomRef.current) {
-      // 使用 requestAnimationFrame 确保 DOM 已完全渲染
+  const scrollToBottom = useCallback(() => {
+    const endElement = messagesEndRef.current;
+    if (endElement) {
+      isAutoScrollingRef.current = true;
+      try {
+        endElement.scrollIntoView({ block: 'end', behavior: 'auto' });
+      } catch {
+        endElement.scrollIntoView(false);
+      }
       requestAnimationFrame(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-        }
+        isAutoScrollingRef.current = false;
       });
+      return;
     }
-  }, [messages]);
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    isAutoScrollingRef.current = true;
+    container.scrollTop = container.scrollHeight;
+    requestAnimationFrame(() => {
+      isAutoScrollingRef.current = false;
+    });
+  }, []);
+
+  // 🔧 自动滚动：用户在底部时，跟随最新内容（包括流式/展开思考块/加载指示器等导致的高度变化）
+  useLayoutEffect(() => {
+    if (currentView !== 'chat') return;
+    if (!isUserAtBottomRef.current) return;
+    scrollToBottom();
+  }, [currentView, messages, expandedThinking, loading, streamingActive, scrollToBottom]);
 
   // 切换回聊天视图时，自动滚动到底部
   useEffect(() => {
-    if (currentView === 'chat' && messagesContainerRef.current) {
+    if (currentView === 'chat') {
       // 使用 setTimeout 确保视图完全渲染后再滚动
       const timer = setTimeout(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-        }
+        scrollToBottom();
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [currentView]);
+  }, [currentView, scrollToBottom]);
+
+  // 双击 ESC 快捷键打开回滚弹窗
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+
+      // 如果有其他弹窗打开，不处理双击 ESC
+      if (permissionDialogOpen || askUserQuestionDialogOpen || rewindDialogOpen || rewindSelectDialogOpen) {
+        return;
+      }
+
+      // 只在 claude provider 且有消息时才触发
+      if (currentProvider !== 'claude' || messages.length === 0) {
+        return;
+      }
+
+      const now = Date.now();
+      const timeSinceLastEsc = now - lastEscPressTimeRef.current;
+
+      // 如果两次 ESC 间隔小于 400ms，触发回滚弹窗
+      if (timeSinceLastEsc < 400) {
+        e.preventDefault();
+        setRewindSelectDialogOpen(true);
+        lastEscPressTimeRef.current = 0; // 重置，避免连续触发
+      } else {
+        lastEscPressTimeRef.current = now;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentProvider, messages.length, permissionDialogOpen, askUserQuestionDialogOpen, rewindDialogOpen, rewindSelectDialogOpen]);
 
   /**
    * 处理消息发送（来自 ChatInputBox）
    */
   const handleSubmit = (content: string, attachments?: Attachment[]) => {
-    const text = content.trim();
+    // Remove zero-width spaces and other invisible characters
+    const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
     if (!text && !hasAttachments) {
       return;
     }
     if (loading) {
+      return;
+    }
+
+    // 🔧 防御性校验：即使输入框侧 gating 失效，也不能在 SDK 状态未知/未安装时发送
+    if (!sdkStatusLoaded) {
+      addToast(t('chat.sdkStatusLoading'), 'info');
+      return;
+    }
+    if (!currentSdkInstalled) {
+      addToast(
+        t('chat.sdkNotInstalled', { provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code' }) + ' ' + t('chat.goInstallSdk'),
+        'warning'
+      );
+      setSettingsInitialTab('dependencies');
+      setCurrentView('settings');
       return;
     }
 
@@ -681,6 +1632,32 @@ const App = () => {
     };
     setMessages((prev) => [...prev, userMessage]);
 
+    // 【FIX】立即设置 loading 状态，避免与后端回调的竞态条件
+    // 第二次发送消息时，后端的 channelId 已存在，响应可能非常快
+    // 如果等待后端回调设置 loading，可能会被 message_end 的 loading=false 覆盖
+    setLoading(true);
+    setLoadingStartTime(Date.now());
+
+    // 发送消息后强制滚动到底部，确保用户能看到"正在生成响应"提示和新内容
+    isUserAtBottomRef.current = true;
+    requestAnimationFrame(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+    });
+
+    // 【FIX】在发送消息前，强制同步 provider 设置，确保后端使用正确的 SDK
+    console.log('[DEBUG] Current provider before send:', currentProvider);
+    sendBridgeMessage('set_provider', currentProvider);
+
+    // 【FIX】构建智能体信息，随消息一起发送，确保每个标签页使用自己选择的智能体
+    const agentInfo = selectedAgent ? {
+      id: selectedAgent.id,
+      name: selectedAgent.name,
+      prompt: selectedAgent.prompt,
+    } : null;
+
+    // 发送消息（智能体提示词由前端传递，不依赖后端全局设置）
     if (hasAttachments) {
       try {
         const payload = JSON.stringify({
@@ -689,15 +1666,20 @@ const App = () => {
             fileName: a.fileName,
             mediaType: a.mediaType,
             data: a.data,
-          }))
+          })),
+          agent: agentInfo,
         });
         sendBridgeMessage('send_message_with_attachments', payload);
       } catch (error) {
         console.error('[Frontend] Failed to serialize attachments payload', error);
-        sendBridgeMessage('send_message', text);
+        // Fallback: send message with agent info
+        const fallbackPayload = JSON.stringify({ text, agent: agentInfo });
+        sendBridgeMessage('send_message', fallbackPayload);
       }
     } else {
-      sendBridgeMessage('send_message', text);
+      // 【FIX】将消息和智能体信息打包成 JSON 发送
+      const payload = JSON.stringify({ text, agent: agentInfo });
+      sendBridgeMessage('send_message', payload);
     }
   };
 
@@ -705,7 +1687,13 @@ const App = () => {
    * 处理模式选择
    */
   const handleModeSelect = (mode: PermissionMode) => {
+    if (currentProvider === 'codex') {
+      setPermissionMode('bypassPermissions');
+      sendBridgeMessage('set_mode', 'bypassPermissions');
+      return;
+    }
     setPermissionMode(mode);
+    setClaudePermissionMode(mode);
     sendBridgeMessage('set_mode', mode);
   };
 
@@ -727,10 +1715,37 @@ const App = () => {
   const handleProviderSelect = (providerId: string) => {
     setCurrentProvider(providerId);
     sendBridgeMessage('set_provider', providerId);
+    const modeToSet = providerId === 'codex' ? 'bypassPermissions' : claudePermissionMode;
+    setPermissionMode(modeToSet);
+    sendBridgeMessage('set_mode', modeToSet);
 
     // 切换 provider 时,同时发送对应的模型
     const newModel = providerId === 'codex' ? selectedCodexModel : selectedClaudeModel;
     sendBridgeMessage('set_model', newModel);
+  };
+
+  /**
+   * 处理思考深度选择 (Codex only)
+   */
+  const handleReasoningChange = (effort: ReasoningEffort) => {
+    setReasoningEffort(effort);
+    sendBridgeMessage('set_reasoning_effort', effort);
+  };
+
+  /**
+   * 处理智能体选择
+   */
+  const handleAgentSelect = (agent: SelectedAgent | null) => {
+    setSelectedAgent(agent);
+    if (agent) {
+      sendBridgeMessage('set_selected_agent', JSON.stringify({
+        id: agent.id,
+        name: agent.name,
+        prompt: agent.prompt,
+      }));
+    } else {
+      sendBridgeMessage('set_selected_agent', '');
+    }
   };
 
   /**
@@ -767,6 +1782,25 @@ const App = () => {
     addToast(enabled ? t('toast.thinkingEnabled') : t('toast.thinkingDisabled'), 'success');
   };
 
+  /**
+   * 处理流式传输开关切换
+   */
+  const handleStreamingEnabledChange = useCallback((enabled: boolean) => {
+    setStreamingEnabledSetting(enabled);
+    const payload = { streamingEnabled: enabled };
+    sendBridgeMessage('set_streaming_enabled', JSON.stringify(payload));
+    addToast(enabled ? t('settings.basic.streaming.enabled') : t('settings.basic.streaming.disabled'), 'success');
+  }, [t, addToast]);
+
+  /**
+   * 处理发送快捷键变更
+   */
+  const handleSendShortcutChange = useCallback((shortcut: 'enter' | 'cmdEnter') => {
+    setSendShortcut(shortcut);
+    const payload = { sendShortcut: shortcut };
+    sendBridgeMessage('set_send_shortcut', JSON.stringify(payload));
+  }, []);
+
   const interruptSession = () => {
     sendBridgeMessage('interrupt_session');
     // 移除通知：已发送中断请求
@@ -798,12 +1832,13 @@ const App = () => {
     setShowNewSessionConfirm(false);
     sendBridgeMessage('create_new_session');
     setMessages([]);
-    // 移除通知：正在创建新会话...
+    setCurrentSessionId(null);
     // 重置使用量显示为 0%
     setUsagePercentage(0);
     setUsageUsedTokens(0);
     // 保留 maxTokens，等待后端推送；如果此前已知模型，可按默认 272K 预估
     setUsageMaxTokens((prev) => prev ?? 272000);
+    // Toast is shown by backend when session is actually created
   };
 
   const handleCancelNewSession = () => {
@@ -817,9 +1852,11 @@ const App = () => {
     // 直接创建新会话，不再弹出第二个确认框
     sendBridgeMessage('create_new_session');
     setMessages([]);
+    setCurrentSessionId(null);
     setUsagePercentage(0);
     setUsageUsedTokens(0);
     setUsageMaxTokens((prev) => prev ?? 272000);
+    // Toast is shown by backend when session is actually created
   };
 
   const handleCancelInterrupt = () => {
@@ -841,6 +1878,8 @@ const App = () => {
     console.log('[PERM_DEBUG][FRONTEND] Sending decision payload:', payload);
     sendBridgeMessage('permission_decision', payload);
     console.log('[PERM_DEBUG][FRONTEND] Decision sent, closing dialog');
+    permissionDialogOpenRef.current = false;
+    currentPermissionRequestRef.current = null;
     setPermissionDialogOpen(false);
     setCurrentPermissionRequest(null);
   };
@@ -860,8 +1899,50 @@ const App = () => {
     console.log('[PERM_DEBUG][FRONTEND] Sending decision payload:', payload);
     sendBridgeMessage('permission_decision', payload);
     console.log('[PERM_DEBUG][FRONTEND] Decision sent, closing dialog');
+    permissionDialogOpenRef.current = false;
+    currentPermissionRequestRef.current = null;
     setPermissionDialogOpen(false);
     setCurrentPermissionRequest(null);
+  };
+
+  /**
+   * 处理 AskUserQuestion 提交
+   */
+  const handleAskUserQuestionSubmit = (requestId: string, answers: Record<string, string>) => {
+    console.log('[ASK_USER_QUESTION][FRONTEND] handleAskUserQuestionSubmit called');
+    console.log('[ASK_USER_QUESTION][FRONTEND] requestId:', requestId);
+    console.log('[ASK_USER_QUESTION][FRONTEND] answers:', answers);
+    const payload = JSON.stringify({
+      requestId,
+      answers,
+    });
+    console.log('[ASK_USER_QUESTION][FRONTEND] Sending response payload:', payload);
+    sendBridgeMessage('ask_user_question_response', payload);
+    console.log('[ASK_USER_QUESTION][FRONTEND] Response sent, closing dialog');
+    askUserQuestionDialogOpenRef.current = false;
+    currentAskUserQuestionRequestRef.current = null;
+    setAskUserQuestionDialogOpen(false);
+    setCurrentAskUserQuestionRequest(null);
+  };
+
+  /**
+   * 处理 AskUserQuestion 取消
+   */
+  const handleAskUserQuestionCancel = (requestId: string) => {
+    console.log('[ASK_USER_QUESTION][FRONTEND] handleAskUserQuestionCancel called');
+    console.log('[ASK_USER_QUESTION][FRONTEND] requestId:', requestId);
+    // 发送空答案表示用户取消
+    const payload = JSON.stringify({
+      requestId,
+      answers: {},
+    });
+    console.log('[ASK_USER_QUESTION][FRONTEND] Sending cancel payload:', payload);
+    sendBridgeMessage('ask_user_question_response', payload);
+    console.log('[ASK_USER_QUESTION][FRONTEND] Cancel sent, closing dialog');
+    askUserQuestionDialogOpenRef.current = false;
+    currentAskUserQuestionRequestRef.current = null;
+    setAskUserQuestionDialogOpen(false);
+    setCurrentAskUserQuestionRequest(null);
   };
 
   /**
@@ -874,11 +1955,13 @@ const App = () => {
       channelId,
       allow: false,
       remember: false,
-      rejectMessage: 'User denied the permission request',
+      rejectMessage: t('permission.userDenied'),
     });
     console.log('[PERM_DEBUG][FRONTEND] Sending decision payload:', payload);
     sendBridgeMessage('permission_decision', payload);
     console.log('[PERM_DEBUG][FRONTEND] Decision sent, closing dialog');
+    permissionDialogOpenRef.current = false;
+    currentPermissionRequestRef.current = null;
     setPermissionDialogOpen(false);
     setCurrentPermissionRequest(null);
   };
@@ -896,6 +1979,7 @@ const App = () => {
 
   const loadHistorySession = (sessionId: string) => {
     sendBridgeMessage('load_session', sessionId);
+    setCurrentSessionId(sessionId);
     setCurrentView('chat');
   };
 
@@ -916,8 +2000,19 @@ const App = () => {
         total: updatedTotal
       });
 
+      // 如果删除的是当前会话，清空消息并重置状态
+      if (sessionId === currentSessionId) {
+        setMessages([]);
+        setCurrentSessionId(null);
+        setUsagePercentage(0);
+        setUsageUsedTokens(0);
+        // 设置标志位，抑制后端 createNewSession 触发的 updateStatus toast
+        suppressNextStatusToastRef.current = true;
+        sendBridgeMessage('create_new_session');
+      }
+
       // 显示成功提示
-      addToast('会话已删除', 'success');
+      addToast(t('history.sessionDeleted'), 'success');
     }
   };
 
@@ -992,23 +2087,100 @@ const App = () => {
 
   // 文案本地化映射
   const localizeMessage = (text: string): string => {
-    const messageMap: Record<string, string> = {
-      'Request interrupted by user': '请求已被用户中断',
+    // ai-bridge 错误消息的英文到 i18n 键的映射
+    const aiBridgeMessageMap: Record<string, string> = {
+      // Claude Code 错误消息
+      'Claude Code was interrupted (possibly response timeout or user cancellation):': t('aiBridge.claudeCodeInterrupted'),
+      'Claude Code error:': t('aiBridge.claudeCodeError'),
+      'Not configured': t('aiBridge.notConfigured'),
+      'Not configured (value is empty or missing)': t('aiBridge.notConfiguredEmpty'),
+      'Default (https://api.anthropic.com)': t('aiBridge.defaultBaseUrl'),
+      // Codex 错误消息
+      'Codex authentication error:': t('aiBridge.codexAuthError'),
+      'Codex network error:': t('aiBridge.codexNetworkError'),
+      'Codex error:': t('aiBridge.codexError'),
+      // 权限相关
+      'User did not provide answers': t('aiBridge.userDidNotProvideAnswers'),
+      // 数据库相关
+      'Missing database file path argument': t('aiBridge.dbMissingPath'),
+      'Database file does not exist': t('aiBridge.dbFileNotExist'),
+      'Failed to read database': t('aiBridge.dbReadFailed'),
+      'Failed to parse provider config': t('aiBridge.dbParseProviderFailed'),
+      // 其他
+      'AI response is empty': t('aiBridge.aiResponseEmpty'),
+      'Enhancement failed': t('aiBridge.enhancementFailed'),
+      'Request interrupted by user': t('chat.requestInterrupted'),
+      '[Empty message]': t('aiBridge.emptyMessage'),
+      '[Uploaded attachment(s)]': t('aiBridge.uploadedAttachments'),
     };
 
     // 检查是否有完全匹配的映射
-    if (messageMap[text]) {
-      return messageMap[text];
+    if (aiBridgeMessageMap[text]) {
+      return aiBridgeMessageMap[text];
     }
 
-    // 检查是否包含需要映射的关键词
-    for (const [key, value] of Object.entries(messageMap)) {
-      if (text.includes(key)) {
-        return text.replace(key, value);
+    // 检查是否包含需要映射的关键词并替换
+    let result = text;
+    for (const [key, value] of Object.entries(aiBridgeMessageMap)) {
+      if (result.includes(key)) {
+        result = result.replace(key, value);
       }
     }
 
-    return text;
+    // 处理带参数的消息
+    // 匹配 "User denied permission for XXX tool"
+    const permissionDeniedMatch = result.match(/User denied permission for (.+) tool/);
+    if (permissionDeniedMatch) {
+      result = result.replace(
+        permissionDeniedMatch[0],
+        t('aiBridge.userDeniedPermission', { toolName: permissionDeniedMatch[1] })
+      );
+    }
+
+    // 匹配 "[Uploaded X image(s)]"
+    const uploadedImagesMatch = result.match(/\[Uploaded (\d+) image\(s\)\]/);
+    if (uploadedImagesMatch) {
+      result = result.replace(
+        uploadedImagesMatch[0],
+        t('aiBridge.uploadedImages', { count: parseInt(uploadedImagesMatch[1], 10) })
+      );
+    }
+
+    // 匹配 "[Attachment: XXX]"
+    const attachmentMatch = result.match(/\[Attachment: (.+)\]/);
+    if (attachmentMatch) {
+      result = result.replace(
+        attachmentMatch[0],
+        `[${t('aiBridge.attachment')}: ${attachmentMatch[1]}]`
+      );
+    }
+
+    // 处理多行错误消息中的标签
+    result = result
+      .replace(/- Error message:/g, `- ${t('aiBridge.errorMessage')}:`)
+      .replace(/- Current API Key source:/g, `- ${t('aiBridge.currentApiKeySource')}:`)
+      .replace(/- Current API Key preview:/g, `- ${t('aiBridge.currentApiKeyPreview')}:`)
+      .replace(/- Current Base URL:/g, `- ${t('aiBridge.currentBaseUrl')}:`)
+      .replace(/\(source:/g, `(${t('aiBridge.source')}:`)
+      .replace(/- Tip: CLI can read from environment variables or settings\.json; this plugin only supports reading from settings\.json to avoid issues\. You can configure it in the plugin's top-right Settings > Provider Management/g,
+        `- ${t('aiBridge.configTip')}`);
+
+    // 处理 Codex 错误消息的详细内容
+    result = result
+      .replace(/Please check the following:\n1\. Is the Codex API Key in plugin settings correct\n2\. Does the API Key have sufficient permissions\n3\. If using a custom Base URL, please confirm the address is correct/g,
+        t('aiBridge.codexAuthErrorChecks'))
+      .replace(/Tip: Codex requires a valid OpenAI API Key/g, t('aiBridge.codexAuthTip'))
+      .replace(/Please check:\n1\. Is the network connection working\n2\. If using a proxy, please confirm proxy configuration\n3\. Is the firewall blocking the connection/g,
+        t('aiBridge.codexNetworkErrorChecks'))
+      .replace(/Please check network connection and Codex configuration/g, t('aiBridge.codexErrorCheck'));
+
+    // 处理 API 错误消息
+    result = result
+      .replace(/API error:/g, `${t('aiBridge.apiError')}:`)
+      .replace(/Possible causes:\n1\. API Key is not configured correctly\n2\. Third-party proxy service configuration issue\n3\. Please check the configuration in ~\/\.claude\/settings\.json/g,
+        t('aiBridge.apiErrorCauses'));
+
+    return result;
   };
 
   const getMessageText = (message: ClaudeMessage) => {
@@ -1019,7 +2191,7 @@ const App = () => {
     } else {
       const raw = message.raw;
       if (!raw) {
-        return '(空消息)';
+        return `(${t('chat.emptyMessage')})`;
       }
       if (typeof raw === 'string') {
         text = raw;
@@ -1036,7 +2208,7 @@ const App = () => {
           .map((block) => block.text ?? '')
           .join('\n');
       } else {
-        return '(空消息)';
+        return `(${t('chat.emptyMessage')})`;
       }
     }
 
@@ -1069,20 +2241,21 @@ const App = () => {
     }
     if (message.type === 'user' || message.type === 'error') {
       // 检查是否有有效的文本内容
-      if (text && text.trim() && text !== '(空消息)' && text !== '(无法解析内容)') {
+      if (text && text.trim() && text !== `(${t('chat.emptyMessage')})` && text !== `(${t('chat.parseError')})`) {
         return true;
       }
       // 检查是否有有效的内容块（如图片等）
       const rawBlocks = normalizeBlocks(message.raw);
       if (Array.isArray(rawBlocks) && rawBlocks.length > 0) {
         // 确保至少有一个非空的内容块
-        return rawBlocks.some(block => {
+        const hasValidBlock = rawBlocks.some(block => {
           if (block.type === 'text') {
             return block.text && block.text.trim().length > 0;
           }
           // 图片、工具使用等其他类型的块都应该显示
           return true;
         });
+        return hasValidBlock;
       }
       return false;
     }
@@ -1130,7 +2303,7 @@ const App = () => {
           blocks.push({
             type: 'tool_use',
             id: typeof candidate.id === 'string' ? (candidate.id as string) : undefined,
-            name: typeof candidate.name === 'string' ? (candidate.name as string) : '未知工具',
+            name: typeof candidate.name === 'string' ? (candidate.name as string) : t('tools.unknownTool'),
             input: (candidate.input as Record<string, unknown>) ?? {},
           });
         } else if (type === 'image') {
@@ -1206,6 +2379,13 @@ const App = () => {
   const getContentBlocks = (message: ClaudeMessage): ClaudeContentBlock[] => {
     const rawBlocks = normalizeBlocks(message.raw);
     if (rawBlocks && rawBlocks.length > 0) {
+      // 🔧 流式/工具场景：如果 raw 里没有 text，但 message.content 有文本，仍需要展示文本
+      const hasTextBlock = rawBlocks.some(
+        (block) => block.type === 'text' && typeof (block as any).text === 'string' && String((block as any).text).trim().length > 0,
+      );
+      if (!hasTextBlock && message.content && message.content.trim()) {
+        return [...rawBlocks, { type: 'text', text: localizeMessage(message.content) }];
+      }
       return rawBlocks;
     }
     if (message.content && message.content.trim()) {
@@ -1265,6 +2445,112 @@ const App = () => {
     if (current) result.push(current);
     return result;
   }, [messages]);
+
+// Claude 流式：思考块在输出中自动展开，输出结束自动折叠（见 onStreamEnd）
+  useEffect(() => {
+    if (currentProvider !== 'claude') return;
+    if (!streamingActive) return;
+
+    let lastAssistantIdx = -1;
+    for (let i = mergedMessages.length - 1; i >= 0; i -= 1) {
+      if (mergedMessages[i]?.type === 'assistant') {
+        lastAssistantIdx = i;
+        break;
+      }
+    }
+    if (lastAssistantIdx < 0) return;
+
+    const blocks = getContentBlocks(mergedMessages[lastAssistantIdx]);
+    if (!Array.isArray(blocks) || blocks.length === 0) return;
+
+    const keysToOpen: string[] = [];
+    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex += 1) {
+      if (blocks[blockIndex]?.type === 'thinking') {
+        keysToOpen.push(`${lastAssistantIdx}_${blockIndex}`);
+      }
+    }
+    if (keysToOpen.length === 0) return;
+
+    setExpandedThinking((prevExpanded) => {
+      let changed = false;
+      const next = { ...prevExpanded };
+      for (const key of keysToOpen) {
+        if (!next[key]) {
+          next[key] = true;
+          autoExpandedThinkingKeysRef.current.add(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prevExpanded;
+    });
+  }, [currentProvider, mergedMessages, streamingActive]);
+
+  const canRewindFromMessageIndex = (userMessageIndex: number) => {
+    if (userMessageIndex < 0 || userMessageIndex >= mergedMessages.length) {
+      return false;
+    }
+
+    const current = mergedMessages[userMessageIndex];
+    if (current.type !== 'user') return false;
+    if ((current.content || '').trim() === '[tool_result]') return false;
+    const raw = current.raw;
+    if (raw && typeof raw !== 'string') {
+      const content = (raw as any).content ?? (raw as any).message?.content;
+      if (Array.isArray(content) && content.some((block: any) => block && block.type === 'tool_result')) {
+        return false;
+      }
+    }
+
+    for (let i = userMessageIndex + 1; i < mergedMessages.length; i += 1) {
+      const msg = mergedMessages[i];
+      if (msg.type === 'user') {
+        break;
+      }
+      const blocks = getContentBlocks(msg);
+      for (const block of blocks) {
+        if (block.type !== 'tool_use') {
+          continue;
+        }
+        const toolName = (block.name ?? '').toLowerCase();
+        // Include all file modification tools: write (create), edit, notebookedit, etc.
+        if (['write', 'edit', 'edit_file', 'replace_string', 'write_to_file', 'notebookedit', 'create_file'].includes(toolName)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  // Calculate rewindable messages for the select dialog
+  const rewindableMessages = useMemo((): RewindableMessage[] => {
+    if (currentProvider !== 'claude') {
+      return [];
+    }
+
+    const result: RewindableMessage[] = [];
+
+    for (let i = 0; i < mergedMessages.length - 1; i++) {
+      if (!canRewindFromMessageIndex(i)) {
+        continue;
+      }
+
+      const message = mergedMessages[i];
+      const content = message.content || getMessageText(message);
+      const timestamp = message.timestamp ? formatTime(message.timestamp) : undefined;
+      const messagesAfterCount = mergedMessages.length - i - 1;
+
+      result.push({
+        messageIndex: i,
+        message,
+        displayContent: content,
+        timestamp,
+        messagesAfterCount,
+      });
+    }
+
+    return result;
+  }, [mergedMessages, currentProvider]);
 
   const findToolResult = useCallback((toolUseId?: string, messageIndex?: number): ToolResultBlock | null => {
     if (!toolUseId || typeof messageIndex !== 'number') {
@@ -1369,6 +2655,13 @@ const App = () => {
                 </button>
                 <button
                   className="icon-button"
+                  onClick={() => sendBridgeMessage('create_new_tab')}
+                  data-tooltip={t('common.newTab')}
+                >
+                  <span className="codicon codicon-split-horizontal" />
+                </button>
+                <button
+                  className="icon-button"
                   onClick={() => setCurrentView('history')}
                   data-tooltip={t('common.history')}
                 >
@@ -1376,7 +2669,10 @@ const App = () => {
                 </button>
                 <button
                   className="icon-button"
-                  onClick={() => setCurrentView('settings')}
+                  onClick={() => {
+                    setSettingsInitialTab(undefined);
+                    setCurrentView('settings');
+                  }}
                   data-tooltip={t('common.settings')}
                 >
                   <span className="codicon codicon-settings-gear" />
@@ -1388,7 +2684,15 @@ const App = () => {
       )}
 
       {currentView === 'settings' ? (
-        <SettingsView onClose={() => setCurrentView('chat')} />
+        <SettingsView
+          onClose={() => setCurrentView('chat')}
+          initialTab={settingsInitialTab}
+          currentProvider={currentProvider}
+          streamingEnabled={streamingEnabledSetting}
+          onStreamingEnabledChange={handleStreamingEnabledChange}
+          sendShortcut={sendShortcut}
+          onSendShortcutChange={handleSendShortcutChange}
+        />
       ) : currentView === 'chat' ? (
         <>
           <div className="messages-container" ref={messagesContainerRef}>
@@ -1405,27 +2709,57 @@ const App = () => {
               }}
             >
               <div style={{ position: 'relative', display: 'inline-block' }}>
-                {currentProvider === 'codex' ? (
-                  <OpenAI.Avatar size={64} />
-                ) : (
-                  <Claude.Color size={58} />
-                )}
+                <BlinkingLogo provider={currentProvider} onProviderChange={handleProviderSelect} />
                 <span className="version-tag">
                   v{APP_VERSION}
                 </span>
               </div>
-              <div>{t('chat.sendMessage', { provider: currentProvider === 'codex' ? 'Codex Cli' : 'Claude Code' })}</div>
+              <div>
+                <AnimatedText text={t('chat.sendMessage', { provider: currentProvider === 'codex' ? 'Codex Cli' : 'Claude Code' })} />
+              </div>
             </div>
           )}
 
           {mergedMessages.map((message, messageIndex) => {
             // mergedMessages 已经过滤了不显示的消息
+            const isLastAssistantMessage = message.type === 'assistant' && messageIndex === mergedMessages.length - 1;
+            const isMessageStreaming = streamingActive && isLastAssistantMessage;
+
+            const handleCopyMessage = async () => {
+              const content = extractMarkdownContent(message);
+              if (!content.trim()) return;
+
+              const success = await copyToClipboard(content);
+              if (success) {
+                setCopiedMessageIndex(messageIndex);
+                setTimeout(() => setCopiedMessageIndex(null), 1500);
+              }
+            };
 
             return (
               <div key={messageIndex} className={`message ${message.type}`}>
+                {/* Copy button for assistant messages - floating position */}
+                {message.type === 'assistant' && !isMessageStreaming && (
+                  <button
+                    className={`message-copy-btn ${copiedMessageIndex === messageIndex ? 'copied' : ''}`}
+                    onClick={handleCopyMessage}
+                    title={t('markdown.copyMessage')}
+                    aria-label={t('markdown.copyMessage')}
+                  >
+                    <span className="copy-icon">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 4l0 8a2 2 0 0 0 2 2l8 0a2 2 0 0 0 2 -2l0 -8a2 2 0 0 0 -2 -2l-8 0a2 2 0 0 0 -2 2zm2 0l8 0l0 8l-8 0l0 -8z" fill="currentColor" fillOpacity="0.9"/>
+                        <path d="M2 2l0 8l-2 0l0 -8a2 2 0 0 1 2 -2l8 0l0 2l-8 0z" fill="currentColor" fillOpacity="0.6"/>
+                      </svg>
+                    </span>
+                    <span className="copy-tooltip">{t('markdown.copySuccess')}</span>
+                  </button>
+                )}
                 {message.type === 'user' && message.timestamp && (
-                  <div className="message-timestamp-header">
-                    {formatTime(message.timestamp)}
+                  <div className="message-header-row">
+                    <div className="message-timestamp-header">
+                      {formatTime(message.timestamp)}
+                    </div>
                   </div>
                 )}
                 {message.type !== 'assistant' && message.type !== 'user' && (
@@ -1439,7 +2773,16 @@ const App = () => {
                   ) : (
                     getContentBlocks(message).map((block, blockIndex) => (
                       <div key={`${messageIndex}-${blockIndex}`} className="content-block">
-                        {block.type === 'text' && <MarkdownBlock content={block.text ?? ''} />}
+                         {block.type === 'text' && (
+                           message.type === 'user' ? (
+                             <CollapsibleTextBlock content={block.text ?? ''} />
+                           ) : (
+                            <MarkdownBlock
+                              content={block.text ?? ''}
+                              isStreaming={streamingActive && message.type === 'assistant' && messageIndex === mergedMessages.length - 1}
+                            />
+                           )
+                         )}
                         {block.type === 'image' && block.src && (
                           <div
                             className={`message-image-block ${message.type === 'user' ? 'user-image' : ''}`}
@@ -1456,11 +2799,11 @@ const App = () => {
                               }
                             }}
                             style={{ cursor: 'pointer' }}
-                            title="点击预览大图"
+                            title={t('chat.clickToPreview')}
                           >
                             <img
                               src={block.src}
-                              alt="用户上传的图片"
+                              alt={t('chat.userUploadedImage')}
                               style={{
                                 maxWidth: message.type === 'user' ? '200px' : '100%',
                                 maxHeight: message.type === 'user' ? '150px' : 'auto',
@@ -1478,7 +2821,7 @@ const App = () => {
                               onClick={() => toggleThinking(messageIndex, blockIndex)}
                             >
                               <span className="thinking-title">
-                                {isThinking && messageIndex === messages.length - 1
+                                {isThinking && messageIndex === mergedMessages.length - 1
                                   ? t('common.thinking')
                                   : t('common.thinkingProcess')}
                               </span>
@@ -1488,7 +2831,10 @@ const App = () => {
                             </div>
                             {isThinkingExpanded(messageIndex, blockIndex) && (
                               <div className="thinking-content">
-                                {block.thinking ?? block.text ?? '(无思考内容)'}
+                                <MarkdownBlock
+                                  content={block.thinking ?? block.text ?? t('chat.noThinkingContent')}
+                                  isStreaming={streamingActive && message.type === 'assistant' && messageIndex === mergedMessages.length - 1}
+                                />
                               </div>
                             )}
                           </div>
@@ -1512,7 +2858,7 @@ const App = () => {
                               ) ? (
                               <EditToolBlock name={block.name} input={block.input} result={findToolResult(block.id, messageIndex)} />
                             ) : block.name &&
-                              ['bash', 'run_terminal_cmd', 'execute_command'].includes(
+                              ['bash', 'run_terminal_cmd', 'execute_command', 'shell_command'].includes(
                                 block.name.toLowerCase(),
                               ) ? (
                               <BashToolBlock
@@ -1545,6 +2891,7 @@ const App = () => {
 
           {/* Loading indicator */}
           {loading && <WaitingIndicator startTime={loadingStartTime ?? undefined} />}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* 滚动控制按钮 */}
@@ -1553,6 +2900,7 @@ const App = () => {
       ) : (
         <HistoryView
           historyData={historyData}
+          currentProvider={currentProvider}
           onLoadSession={loadHistorySession}
           onDeleteSession={deleteHistorySession}
           onExportSession={exportHistorySession}
@@ -1574,12 +2922,27 @@ const App = () => {
             showUsage={true}
             alwaysThinkingEnabled={activeProviderConfig?.settingsConfig?.alwaysThinkingEnabled ?? claudeSettingsAlwaysThinkingEnabled}
             placeholder={t('chat.inputPlaceholder')}
+            sdkInstalled={currentSdkInstalled}
+            sdkStatusLoading={!sdkStatusLoaded}
+            onInstallSdk={() => {
+              setSettingsInitialTab('dependencies');
+              setCurrentView('settings');
+            }}
+            value={draftInput}
+            onInput={setDraftInput}
             onSubmit={handleSubmit}
             onStop={interruptSession}
             onModeSelect={handleModeSelect}
             onModelSelect={handleModelSelect}
             onProviderSelect={handleProviderSelect}
+            reasoningEffort={reasoningEffort}
+            onReasoningChange={handleReasoningChange}
             onToggleThinking={handleToggleThinking}
+            streamingEnabled={streamingEnabledSetting}
+            onStreamingEnabledChange={handleStreamingEnabledChange}
+            sendShortcut={sendShortcut}
+            selectedAgent={selectedAgent}
+            onAgentSelect={handleAgentSelect}
             activeFile={contextInfo?.file}
             selectedLines={contextInfo?.startLine !== undefined && contextInfo?.endLine !== undefined
               ? (contextInfo.startLine === contextInfo.endLine
@@ -1587,6 +2950,13 @@ const App = () => {
                   : `L${contextInfo.startLine}-${contextInfo.endLine}`)
               : undefined}
             onClearContext={() => setContextInfo(null)}
+            onOpenAgentSettings={() => {
+              setSettingsInitialTab('agents');
+              setCurrentView('settings');
+            }}
+            hasMessages={messages.length > 0}
+            onRewind={handleOpenRewindSelectDialog}
+            addToast={addToast}
           />
         </div>
       )}
@@ -1619,6 +2989,28 @@ const App = () => {
         onApprove={handlePermissionApprove}
         onSkip={handlePermissionSkip}
         onApproveAlways={handlePermissionApproveAlways}
+      />
+
+      <AskUserQuestionDialog
+        isOpen={askUserQuestionDialogOpen}
+        request={currentAskUserQuestionRequest}
+        onSubmit={handleAskUserQuestionSubmit}
+        onCancel={handleAskUserQuestionCancel}
+      />
+
+      <RewindSelectDialog
+        isOpen={rewindSelectDialogOpen}
+        rewindableMessages={rewindableMessages}
+        onSelect={handleRewindSelect}
+        onCancel={handleRewindSelectCancel}
+      />
+
+      <RewindDialog
+        isOpen={rewindDialogOpen}
+        request={currentRewindRequest}
+        isLoading={isRewinding}
+        onConfirm={handleRewindConfirm}
+        onCancel={handleRewindCancel}
       />
     </>
   );

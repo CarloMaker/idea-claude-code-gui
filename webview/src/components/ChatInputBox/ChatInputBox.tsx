@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Attachment, ChatInputBoxProps, CommandItem, FileItem, PermissionMode } from './types';
 import { ButtonArea } from './ButtonArea';
 import { AttachmentList } from './AttachmentList';
 import { ContextBar } from './ContextBar';
 import { CompletionDropdown } from './Dropdown';
+import { PromptEnhancerDialog } from './PromptEnhancerDialog';
 import { useCompletionDropdown, useTriggerDetection } from './hooks';
-import { commandToDropdownItem, fileReferenceProvider, fileToDropdownItem, slashCommandProvider, } from './providers';
+import {
+  commandToDropdownItem,
+  fileReferenceProvider,
+  fileToDropdownItem,
+  slashCommandProvider,
+  agentProvider,
+  agentToDropdownItem,
+  type AgentItem,
+} from './providers';
 import { getFileIcon } from '../../utils/fileIcons';
 import { icon_folder } from '../../utils/icons';
 import './styles.css';
@@ -29,14 +39,14 @@ function debounce<T extends (...args: any[]) => void>(
 export const ChatInputBox = ({
   isLoading = false,
   selectedModel = 'claude-sonnet-4-5',
-  permissionMode = 'default',
+  permissionMode = 'bypassPermissions',
   currentProvider = 'claude',
   usagePercentage = 0,
   usageUsedTokens,
   usageMaxTokens,
   showUsage = true,
   attachments: externalAttachments,
-  placeholder = '@引用文件，/唤起指令，shift + enter 换行',
+  placeholder = '',  // Will be passed from parent via t('chat.inputPlaceholder')
   disabled = false,
   value,
   onSubmit,
@@ -47,12 +57,28 @@ export const ChatInputBox = ({
   onModeSelect,
   onModelSelect,
   onProviderSelect,
+  reasoningEffort = 'medium',
+  onReasoningChange,
   activeFile,
   selectedLines,
   onClearContext,
   alwaysThinkingEnabled,
   onToggleThinking,
+  streamingEnabled,
+  onStreamingEnabledChange,
+  sendShortcut = 'enter',
+  selectedAgent,
+  onAgentSelect,
+  onOpenAgentSettings,
+  hasMessages,
+  onRewind,
+  sdkInstalled = true, // 默认为 true，避免初始状态时禁用输入框
+  sdkStatusLoading = false, // SDK 状态是否正在加载
+  onInstallSdk,
+  addToast,
 }: ChatInputBoxProps) => {
+  const { t } = useTranslation();
+
   // 内部附件状态（如果外部未提供）
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
   const attachments = externalAttachments ?? internalAttachments;
@@ -64,9 +90,16 @@ export const ChatInputBox = ({
   const completionSelectedRef = useRef(false);
   const justRenderedTagRef = useRef(false); // 标记是否刚刚渲染了文件标签 // 标记补全菜单刚选中项目，防止回车同时发送消息
   const [isComposing, setIsComposing] = useState(false);
+  const isComposingRef = useRef(false); // 同步的 IME 状态 ref，比 React state 更快响应
   const [hasContent, setHasContent] = useState(false);
   const compositionTimeoutRef = useRef<number | null>(null);
   const lastCompositionEndTimeRef = useRef<number>(0);
+
+  // 增强提示词状态
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [showEnhancerDialog, setShowEnhancerDialog] = useState(false);
+  const [originalPrompt, setOriginalPrompt] = useState('');
+  const [enhancedPrompt, setEnhancedPrompt] = useState('');
 
   // 路径映射：存储文件名/相对路径 -> 完整绝对路径的映射
   // 用于在 tooltip 中显示完整路径
@@ -146,10 +179,61 @@ export const ChatInputBox = ({
     },
   });
 
+  // 智能体选择补全 Hook (行首 # 触发)
+  const agentCompletion = useCompletionDropdown<AgentItem>({
+    trigger: '#',
+    provider: agentProvider,
+    toDropdownItem: agentToDropdownItem,
+    onSelect: (agent, query) => {
+      // 跳过加载中和空状态的特殊项
+      if (agent.id === '__loading__' || agent.id === '__empty__' || agent.id === '__empty_state__') return;
+
+      // 处理创建智能体
+      if (agent.id === '__create_new__') {
+        onOpenAgentSettings?.();
+        // 清除输入框中的 # 触发文本
+        if (editableRef.current && query) {
+          const text = getTextContent();
+          const newText = agentCompletion.replaceText(text, '', query);
+          editableRef.current.innerText = newText;
+          
+          const range = document.createRange();
+          const selection = window.getSelection();
+          range.selectNodeContents(editableRef.current);
+          range.collapse(false);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          
+          handleInput();
+        }
+        return;
+      }
+
+      // 选择智能体：不插入文本，而是调用 onAgentSelect 回调
+      onAgentSelect?.({ id: agent.id, name: agent.name, prompt: agent.prompt });
+
+      // 清除输入框中的 # 触发文本
+      if (editableRef.current && query) {
+        const text = getTextContent();
+        const newText = agentCompletion.replaceText(text, '', query);
+        editableRef.current.innerText = newText;
+
+        // 设置光标位置
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.selectNodeContents(editableRef.current);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        handleInput();
+      }
+    },
+  });
+
   /**
    * 获取输入框纯文本内容（优化版，带缓存）
-   * 注意：在某些浏览器/环境（如 JCEF）中，innerText 可能在末尾包含换行符
-   * 这里统一去除末尾的换行符，确保获取的内容干净
+   * 保留用户输入的原始格式，包括换行符和空白字符
    */
   const getTextContent = useCallback(() => {
     if (!editableRef.current) return '';
@@ -163,7 +247,18 @@ export const ChatInputBox = ({
         text += node.textContent || '';
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const element = node as HTMLElement;
-        if (element.classList.contains('file-tag')) {
+        const tagName = element.tagName.toLowerCase();
+
+        // 处理换行元素
+        if (tagName === 'br') {
+          text += '\n';
+        } else if (tagName === 'div' || tagName === 'p') {
+          // div 和 p 元素前添加换行（如果不是第一个元素）
+          if (text.length > 0 && !text.endsWith('\n')) {
+            text += '\n';
+          }
+          node.childNodes.forEach(walk);
+        } else if (element.classList.contains('file-tag')) {
           const filePath = element.getAttribute('data-file-path') || '';
           text += `@${filePath}`;
           // 不遍历 file-tag 的子节点，避免重复读取文件名和关闭按钮文本
@@ -176,8 +271,18 @@ export const ChatInputBox = ({
 
     editableRef.current.childNodes.forEach(walk);
 
-    // 去除末尾的换行符（\n, \r, \r\n）
-    return text.replace(/[\r\n]+$/, '');
+    // 只移除 JCEF 环境可能添加的末尾单个换行符（不影响用户输入的换行）
+    // 如果末尾有多个换行，只移除最后一个（JCEF 添加的）
+    if (text.endsWith('\n') && editableRef.current.childNodes.length > 0) {
+      const lastChild = editableRef.current.lastChild;
+      // 只有当最后一个节点不是 br 标签时，才移除末尾换行（说明是 JCEF 添加的）
+      if (lastChild?.nodeType !== Node.ELEMENT_NODE ||
+          (lastChild as HTMLElement).tagName?.toLowerCase() !== 'br') {
+        text = text.slice(0, -1);
+      }
+    }
+
+    return text;
   }, []);
 
   /**
@@ -247,6 +352,7 @@ export const ChatInputBox = ({
       const fullMatch = match[0];
       const filePath = match[1];
       const matchIndex = match.index || 0;
+
       // 添加匹配前的文本
       if (matchIndex > lastIndex) {
         const textBefore = currentText.substring(lastIndex, matchIndex);
@@ -259,6 +365,20 @@ export const ChatInputBox = ({
 
       // 获取纯文件名（不含行号，用于获取 ICON）
       const pureFileName = pureFilePath.split(/[/\\]/).pop() || pureFilePath;
+
+      // 验证路径是否为有效引用（必须在 pathMappingRef 中存在）
+      // 只有用户从下拉列表中选择的文件才会被记录到 pathMappingRef
+      const isValidReference =
+        pathMappingRef.current.has(pureFilePath) ||
+        pathMappingRef.current.has(pureFileName) ||
+        pathMappingRef.current.has(filePath);
+
+      // 如果不是有效引用，保留原始文本，不渲染为标签
+      if (!isValidReference) {
+        newHTML += fullMatch;
+        lastIndex = matchIndex + fullMatch.length;
+        return;
+      }
 
       // 获取显示文件名（包含行号，用于显示）
       const displayFileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -278,7 +398,6 @@ export const ChatInputBox = ({
       const escapedPath = escapeHtmlAttr(filePath);
 
       // 尝试从路径映射中获取完整路径（用于 tooltip 显示）
-      // 优先级：pureFilePath -> pureFileName -> 原路径（去掉行号进行查找）
       const fullPath =
         pathMappingRef.current.get(pureFilePath) ||
         pathMappingRef.current.get(pureFileName) ||
@@ -286,8 +405,6 @@ export const ChatInputBox = ({
       const escapedFullPath = escapeHtmlAttr(fullPath);
 
       // 创建文件标签 HTML
-      // data-file-path: 存储原始路径（用于提取文本时还原）
-      // data-tooltip: 存储完整路径（用于悬停显示）
       newHTML += `<span class="file-tag has-tooltip" contenteditable="false" data-file-path="${escapedPath}" data-tooltip="${escapedFullPath}">`;
       newHTML += `<span class="file-tag-icon">${iconSvg}</span>`;
       newHTML += `<span class="file-tag-text">${displayFileName}</span>`;
@@ -432,11 +549,13 @@ export const ChatInputBox = ({
    */
   const clearInput = useCallback(() => {
     if (editableRef.current) {
-      editableRef.current.innerText = '';
+      editableRef.current.innerHTML = '';
       editableRef.current.style.height = 'auto';
       setHasContent(false);
+      // Notify parent component that input is cleared
+      onInput?.('');
     }
-  }, []);
+  }, [onInput]);
 
   /**
    * 调整输入框高度
@@ -455,7 +574,7 @@ export const ChatInputBox = ({
   }, []);
 
   /**
-   * 检测并处理补全触发（优化：只在输入 @ 或 / 时才启动检测）
+   * 检测并处理补全触发（优化：只在输入 @ 或 / 或 # 时才启动检测）
    */
   const detectAndTriggerCompletion = useCallback(() => {
     if (!editableRef.current) return;
@@ -470,6 +589,7 @@ export const ChatInputBox = ({
       justRenderedTagRef.current = false;
       fileCompletion.close();
       commandCompletion.close();
+      agentCompletion.close();
       return;
     }
 
@@ -479,10 +599,12 @@ export const ChatInputBox = ({
     // 优化：快速检查文本中是否包含触发字符，如果没有则直接返回
     const hasAtSymbol = text.includes('@');
     const hasSlashSymbol = text.includes('/');
+    const hasHashSymbol = text.includes('#');
 
-    if (!hasAtSymbol && !hasSlashSymbol) {
+    if (!hasAtSymbol && !hasSlashSymbol && !hasHashSymbol) {
       fileCompletion.close();
       commandCompletion.close();
+      agentCompletion.close();
       return;
     }
 
@@ -493,6 +615,7 @@ export const ChatInputBox = ({
     if (!trigger) {
       fileCompletion.close();
       commandCompletion.close();
+      agentCompletion.close();
       return;
     }
 
@@ -503,6 +626,7 @@ export const ChatInputBox = ({
     // 根据触发符号打开对应的补全
     if (trigger.trigger === '@') {
       commandCompletion.close();
+      agentCompletion.close();
       if (!fileCompletion.isOpen) {
         fileCompletion.open(position, trigger);
         fileCompletion.updateQuery(trigger);
@@ -511,11 +635,21 @@ export const ChatInputBox = ({
       }
     } else if (trigger.trigger === '/') {
       fileCompletion.close();
+      agentCompletion.close();
       if (!commandCompletion.isOpen) {
         commandCompletion.open(position, trigger);
         commandCompletion.updateQuery(trigger);
       } else {
         commandCompletion.updateQuery(trigger);
+      }
+    } else if (trigger.trigger === '#') {
+      fileCompletion.close();
+      commandCompletion.close();
+      if (!agentCompletion.isOpen) {
+        agentCompletion.open(position, trigger);
+        agentCompletion.updateQuery(trigger);
+      } else {
+        agentCompletion.updateQuery(trigger);
       }
     }
   }, [
@@ -525,6 +659,7 @@ export const ChatInputBox = ({
     getTriggerPosition,
     fileCompletion,
     commandCompletion,
+    agentCompletion,
     isComposing,
   ]);
 
@@ -542,22 +677,42 @@ export const ChatInputBox = ({
 
   /**
    * 处理输入事件（优化版：使用防抖减少性能开销）
+   * @param isComposingFromEvent - 从原生事件中获取的 isComposing 状态（优先级更高）
    */
-  const handleInput = useCallback(() => {
+  const handleInput = useCallback((isComposingFromEvent?: boolean) => {
+    // 使用多重检查确保正确检测 IME 状态：
+    // 1. 原生事件的 isComposing（最准确，可在 compositionStart 之前检测）
+    // 2. isComposingRef（同步的 ref，比 React state 更快）
+    // 3. React state isComposing（作为后备）
+    const isCurrentlyComposing = isComposingFromEvent ?? isComposingRef.current ?? isComposing;
+
     const text = getTextContent();
-    const isEmpty = !text.trim();
-    setHasContent(!isEmpty);
+    // 移除零宽字符和其他不可见字符后再检查是否为空，确保在只剩零宽字符时能正确显示 placeholder
+    const cleanText = text.replace(/[\u200B-\u200D\uFEFF]/g, '');
+    const isEmpty = !cleanText.trim();
+    
+    // setHasContent(!isEmpty); // 移到下方处理，避免 IME 干扰
+
+    // 如果内容为空，清空 innerHTML 以确保 :empty 伪类生效（显示 placeholder）
+    if (isEmpty && editableRef.current) {
+      editableRef.current.innerHTML = '';
+    }
 
     // 调整高度
     adjustHeight();
 
     // 组合输入期间不触发补全检测，待组合结束后统一处理
-    if (!isComposing) {
+    // 同时也控制 hasContent 状态更新，避免在 IME 开始时(false->true)触发重渲染
+    if (!isCurrentlyComposing) {
       debouncedDetectCompletion();
+      setHasContent(!isEmpty);
+    } else if (isEmpty) {
+      setHasContent(false);
     }
 
     // 通知父组件
-    onInput?.(text);
+    // 如果判定为空（只有零宽字符），传递空字符串给父组件，防止父组件回传脏数据导致 DOM 重置从而隐藏 placeholder
+    onInput?.(isEmpty ? '' : text);
   }, [getTextContent, adjustHeight, debouncedDetectCompletion, onInput, isComposing]);
 
   /**
@@ -573,11 +728,28 @@ export const ChatInputBox = ({
 
   /**
    * 处理提交
+   * 保留用户输入的原始格式（空格、换行、缩进等）
    */
   const handleSubmit = useCallback(() => {
-    const content = getTextContent().trim();
+    const content = getTextContent();
+    // Remove zero-width spaces and other invisible characters
+    const cleanContent = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 
-    if (!content && attachments.length === 0) {
+    if (sdkStatusLoading) {
+      // SDK 状态加载中，不允许发送
+      addToast?.(t('chat.sdkStatusLoading'), 'info');
+      return;
+    }
+
+    if (!sdkInstalled) {
+      // 提示用户去下载依赖包
+      addToast?.(t('chat.sdkNotInstalled', { provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code' }) + ' ' + t('chat.goInstallSdk'), 'warning');
+      onInstallSdk?.();
+      return;
+    }
+
+    // 只在判断是否为空时使用 trim，不修改实际发送的内容
+    if (!cleanContent && attachments.length === 0) {
       return;
     }
     if (isLoading) {
@@ -587,6 +759,7 @@ export const ChatInputBox = ({
     // 关闭补全菜单
     fileCompletion.close();
     commandCompletion.close();
+    agentCompletion.close();
 
     onSubmit?.(content, attachments.length > 0 ? attachments : undefined);
 
@@ -606,7 +779,87 @@ export const ChatInputBox = ({
     externalAttachments,
     fileCompletion,
     commandCompletion,
+    agentCompletion,
+    sdkStatusLoading,
+    sdkInstalled,
+    onInstallSdk,
+    addToast,
+    t,
+    currentProvider,
   ]);
+
+  /**
+   * 处理增强提示词
+   */
+  const handleEnhancePrompt = useCallback(() => {
+    const content = getTextContent().trim();
+    if (!content) {
+      return;
+    }
+
+    // 设置原始提示词并打开对话框
+    setOriginalPrompt(content);
+    setEnhancedPrompt('');
+    setShowEnhancerDialog(true);
+    setIsEnhancing(true);
+
+    // 调用后端进行提示词增强，传递当前选择的模型
+    if (window.sendToJava) {
+      window.sendToJava(`enhance_prompt:${JSON.stringify({ prompt: content, model: selectedModel })}`);
+    }
+  }, [getTextContent, selectedModel]);
+
+  /**
+   * 处理使用增强后的提示词
+   */
+  const handleUseEnhancedPrompt = useCallback(() => {
+    if (enhancedPrompt && editableRef.current) {
+      // 用增强后的提示词替换输入框内容
+      editableRef.current.innerText = enhancedPrompt;
+      setHasContent(true);
+      onInput?.(enhancedPrompt);
+    }
+    setShowEnhancerDialog(false);
+    setIsEnhancing(false);
+  }, [enhancedPrompt, onInput]);
+
+  /**
+   * 处理保留原始提示词
+   */
+  const handleKeepOriginalPrompt = useCallback(() => {
+    setShowEnhancerDialog(false);
+    setIsEnhancing(false);
+  }, []);
+
+  /**
+   * 关闭增强提示词对话框
+   */
+  const handleCloseEnhancerDialog = useCallback(() => {
+    setShowEnhancerDialog(false);
+    setIsEnhancing(false);
+  }, []);
+
+  // 注册增强提示词结果回调
+  useEffect(() => {
+    // 接收增强后的提示词
+    window.updateEnhancedPrompt = (result: string) => {
+      try {
+        const data = JSON.parse(result);
+        if (data.success && data.enhancedPrompt) {
+          setEnhancedPrompt(data.enhancedPrompt);
+        } else {
+          setEnhancedPrompt(data.error || '增强失败');
+        }
+      } catch {
+        setEnhancedPrompt(result);
+      }
+      setIsEnhancing(false);
+    };
+
+    return () => {
+      delete window.updateEnhancedPrompt;
+    };
+  }, []);
 
   /**
    * 处理 Mac 风格的光标移动、文本选择和删除操作
@@ -851,20 +1104,44 @@ export const ChatInputBox = ({
       }
     }
 
+    if (agentCompletion.isOpen) {
+      const handled = agentCompletion.handleKeyDown(e.nativeEvent);
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        // 如果是回车键选中，标记防止后续发送消息
+        if (e.key === 'Enter') {
+          completionSelectedRef.current = true;
+        }
+        return;
+      }
+    }
+
     // 检查是否刚刚结束组合输入（防止 IME 确认时的回车误触）
     // 如果 compositionend 和 keydown 间隔很短，说明这个 keydown 可能是 IME 确认的回车
     const isRecentlyComposing = Date.now() - lastCompositionEndTimeRef.current < 100;
 
-    // Enter 发送（非 Shift 组合，非 IME 组合）
-    if (isEnterKey && !e.shiftKey && !isIMEComposing && !isRecentlyComposing) {
+    // 根据 sendShortcut 设置决定发送行为
+    // sendShortcut === 'enter': Enter 发送，Shift+Enter 换行
+    // sendShortcut === 'cmdEnter': Cmd/Ctrl+Enter 发送，Enter 换行
+    const isSendKey = sendShortcut === 'cmdEnter'
+      ? (isEnterKey && (e.metaKey || e.ctrlKey) && !isIMEComposing)
+      : (isEnterKey && !e.shiftKey && !isIMEComposing && !isRecentlyComposing);
+
+    if (isSendKey) {
       e.preventDefault();
+      if (sdkStatusLoading || !sdkInstalled) {
+        // SDK 状态加载中或未安装时，回车不发送
+        return;
+      }
       submittedOnEnterRef.current = true;
       handleSubmit();
       return;
     }
 
-    // Shift+Enter 允许换行（默认行为）
-  }, [isComposing, handleSubmit, fileCompletion, commandCompletion]);
+    // 对于 cmdEnter 模式，允许普通 Enter 换行（默认行为）
+    // 对于 enter 模式，Shift+Enter 允许换行（默认行为）
+  }, [isComposing, handleSubmit, fileCompletion, commandCompletion, agentCompletion, sdkStatusLoading, sdkInstalled, sendShortcut]);
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     const isEnterKey =
@@ -873,7 +1150,12 @@ export const ChatInputBox = ({
       (e.nativeEvent as unknown as { keyCode?: number }).keyCode === 13 ||
       (e as unknown as { which?: number }).which === 13;
 
-    if (isEnterKey && !e.shiftKey) {
+    // 根据 sendShortcut 设置判断是否是发送按键
+    const isSendKey = sendShortcut === 'cmdEnter'
+      ? (isEnterKey && (e.metaKey || e.ctrlKey))
+      : (isEnterKey && !e.shiftKey);
+
+    if (isSendKey) {
       e.preventDefault();
       // 如果刚刚在补全菜单中选中了项目，不发送消息
       if (completionSelectedRef.current) {
@@ -884,16 +1166,19 @@ export const ChatInputBox = ({
         submittedOnEnterRef.current = false;
         return;
       }
-      if (!fileCompletion.isOpen && !commandCompletion.isOpen) {
+      if (!fileCompletion.isOpen && !commandCompletion.isOpen && !agentCompletion.isOpen) {
         // 不在 keyup 中处理发送逻辑，统一由 keydown 处理，避免 IME 状态下的误发送
       }
     }
-  }, [isComposing, handleSubmit, fileCompletion, commandCompletion]);
+  }, [isComposing, handleSubmit, fileCompletion, commandCompletion, agentCompletion, sendShortcut]);
 
   // 受控模式：当外部 value 改变时更新输入框内容
   useEffect(() => {
     if (value === undefined) return;
     if (!editableRef.current) return;
+
+    // 如果正在组合输入，不要更新 DOM，否则会打断 IME，导致重复输入（如 ni -> nni）
+    if (isComposingRef.current) return;
 
     const currentText = getTextContent();
     // 仅当外部值与当前值不同时更新，避免光标跳动
@@ -920,12 +1205,25 @@ export const ChatInputBox = ({
     if (!el) return;
 
     const nativeKeyDown = (ev: KeyboardEvent) => {
+      // 检测 IME 输入：keyCode 229 表示 IME 正在处理按键
+      // 这比 compositionStart 事件更早，可以更早地设置 composing 状态
+      const isIMEProcessing = (ev as unknown as { keyCode?: number }).keyCode === 229 || ev.isComposing;
+      if (isIMEProcessing) {
+        isComposingRef.current = true;
+      }
+
       const isEnterKey =
         ev.key === 'Enter' ||
         (ev as unknown as { keyCode?: number }).keyCode === 13 ||
         (ev as unknown as { which?: number }).which === 13;
 
-      const shift = (ev as KeyboardEvent).shiftKey === true;
+      // ⌘/ 快捷键：增强提示词
+      if (ev.key === '/' && ev.metaKey && !ev.shiftKey && !ev.altKey) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        handleEnhancePrompt();
+        return;
+      }
 
       // Mac 风格的光标移动快捷键和删除操作（已在 React 事件中处理，这里不需要处理）
       const isMacCursorMovementOrDelete =
@@ -953,14 +1251,22 @@ export const ChatInputBox = ({
       }
 
       // 补全菜单打开时，不在原生事件中处理（React onKeyDown 已处理，避免重复）
-      if (fileCompletion.isOpen || commandCompletion.isOpen) {
+      if (fileCompletion.isOpen || commandCompletion.isOpen || agentCompletion.isOpen) {
         return;
       }
 
       // 检查是否刚刚结束组合输入
       const isRecentlyComposing = Date.now() - lastCompositionEndTimeRef.current < 100;
 
-      if (isEnterKey && !shift && !isComposing && !isRecentlyComposing) {
+      // 根据 sendShortcut 设置决定发送行为
+      const shift = (ev as KeyboardEvent).shiftKey === true;
+      const metaOrCtrl = ev.metaKey || ev.ctrlKey;
+      const isSendKey = sendShortcut === 'cmdEnter'
+        ? (isEnterKey && metaOrCtrl && !isComposingRef.current && !isComposing)
+        : (isEnterKey && !shift && !isComposingRef.current && !isComposing && !isRecentlyComposing);
+
+      // 使用 ref 而不是 state 来检查 composing 状态，因为 ref 是同步的
+      if (isSendKey) {
         ev.preventDefault();
         submittedOnEnterRef.current = true;
         handleSubmit();
@@ -973,7 +1279,14 @@ export const ChatInputBox = ({
         (ev as unknown as { keyCode?: number }).keyCode === 13 ||
         (ev as unknown as { which?: number }).which === 13;
       const shift = (ev as KeyboardEvent).shiftKey === true;
-      if (isEnterKey && !shift) {
+      const metaOrCtrl = ev.metaKey || ev.ctrlKey;
+
+      // 根据 sendShortcut 设置判断是否是发送按键
+      const isSendKey = sendShortcut === 'cmdEnter'
+        ? (isEnterKey && metaOrCtrl)
+        : (isEnterKey && !shift);
+
+      if (isSendKey) {
         ev.preventDefault();
         // 如果刚刚在补全菜单中选中了项目，不发送消息
         if (completionSelectedRef.current) {
@@ -984,7 +1297,7 @@ export const ChatInputBox = ({
           submittedOnEnterRef.current = false;
           return;
         }
-        if (!fileCompletion.isOpen && !commandCompletion.isOpen) {
+        if (!fileCompletion.isOpen && !commandCompletion.isOpen && !agentCompletion.isOpen) {
           // 不在 keyup 中处理发送逻辑，统一由 keydown 处理
         }
       }
@@ -993,6 +1306,12 @@ export const ChatInputBox = ({
     const nativeBeforeInput = (ev: InputEvent) => {
       const type = (ev as InputEvent).inputType;
       if (type === 'insertParagraph') {
+        // 对于 cmdEnter 模式，普通 Enter 应该允许换行
+        if (sendShortcut === 'cmdEnter') {
+          // 允许默认的换行行为
+          return;
+        }
+
         ev.preventDefault();
         // 如果刚刚在补全菜单中用回车选择了项目，则不发送消息
         if (completionSelectedRef.current) {
@@ -1000,7 +1319,7 @@ export const ChatInputBox = ({
           return;
         }
         // 补全菜单打开时不发送消息
-        if (fileCompletion.isOpen || commandCompletion.isOpen) {
+        if (fileCompletion.isOpen || commandCompletion.isOpen || agentCompletion.isOpen) {
           return;
         }
         handleSubmit();
@@ -1016,7 +1335,7 @@ export const ChatInputBox = ({
       el.removeEventListener('keyup', nativeKeyUp, { capture: true } as any);
       el.removeEventListener('beforeinput', nativeBeforeInput as EventListener, { capture: true } as any);
     };
-  }, [isComposing, handleSubmit, fileCompletion, commandCompletion]);
+  }, [isComposing, handleSubmit, handleEnhancePrompt, fileCompletion, commandCompletion, agentCompletion, sendShortcut]);
 
   /**
    * 处理 IME 组合开始
@@ -1027,6 +1346,8 @@ export const ChatInputBox = ({
       clearTimeout(compositionTimeoutRef.current);
       compositionTimeoutRef.current = null;
     }
+    // 同时更新 ref 和 state，ref 是同步的，state 是异步的
+    isComposingRef.current = true;
     setIsComposing(true);
   }, []);
 
@@ -1035,9 +1356,12 @@ export const ChatInputBox = ({
    */
   const handleCompositionEnd = useCallback(() => {
     lastCompositionEndTimeRef.current = Date.now();
+    // 同时更新 ref 和 state
+    isComposingRef.current = false;
     setIsComposing(false);
     // 增加稍长的延迟以确保低性能环境下 DOM/IME 状态稳定
     compositionTimeoutRef.current = window.setTimeout(() => {
+      isComposingRef.current = false;
       setIsComposing(false);
       compositionTimeoutRef.current = null;
       // 组合结束后，强制同步一次输入状态并触发文件标签渲染，清理可能残留的上屏字符/下划线
@@ -1221,6 +1545,14 @@ export const ChatInputBox = ({
 
     // 没有图片文件，处理文本（文件路径或其他文本）
     if (text && text.trim()) {
+      // 提取文件路径并添加到路径映射中
+      const filePath = text.trim();
+      const fileName = filePath.split(/[/\\]/).pop() || filePath;
+
+      // 将路径添加到 pathMappingRef，使其成为"有效引用"
+      pathMappingRef.current.set(fileName, filePath);
+      pathMappingRef.current.set(filePath, filePath);
+
       // 自动添加 @ 前缀（如果还没有），并添加空格以触发渲染
       const textToInsert = (text.startsWith('@') ? text : `@${text}`) + ' ';
 
@@ -1340,6 +1672,14 @@ export const ChatInputBox = ({
     // 注册全局函数以接收 Java 传递的文件路径
     (window as any).handleFilePathFromJava = (filePath: string) => {
       if (!editableRef.current) return;
+
+      // 提取文件路径并添加到路径映射中
+      const absolutePath = filePath.trim();
+      const fileName = absolutePath.split(/[/\\]/).pop() || absolutePath;
+
+      // 将路径添加到 pathMappingRef，使其成为"有效引用"
+      pathMappingRef.current.set(fileName, absolutePath);
+      pathMappingRef.current.set(absolutePath, absolutePath);
 
       // 插入文件路径到输入框（自动添加 @ 前缀），并添加空格以触发渲染
       const pathToInsert = (filePath.startsWith('@') ? filePath : `@${filePath}`) + ' ';
@@ -1464,6 +1804,26 @@ export const ChatInputBox = ({
 
   return (
     <div className="chat-input-box" onClick={focusInput} ref={containerRef}>
+      {/* 🔧 SDK 状态加载中或未安装时的提示条 */}
+      {(sdkStatusLoading || !sdkInstalled) && (
+        <div className={`sdk-warning-bar ${sdkStatusLoading ? 'sdk-loading' : ''}`}>
+          <span className={`codicon ${sdkStatusLoading ? 'codicon-loading codicon-modifier-spin' : 'codicon-warning'}`} />
+          <span className="sdk-warning-text">
+            {sdkStatusLoading
+              ? t('chat.sdkStatusLoading')
+              : t('chat.sdkNotInstalled', { provider: currentProvider === 'codex' ? 'Codex' : 'Claude Code' })}
+          </span>
+          {!sdkStatusLoading && (
+            <button className="sdk-install-btn" onClick={(e) => {
+              e.stopPropagation();
+              onInstallSdk?.();
+            }}>
+              {t('chat.goInstallSdk')}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 附件列表 */}
       {attachments.length > 0 && (
         <AttachmentList
@@ -1482,6 +1842,11 @@ export const ChatInputBox = ({
         showUsage={showUsage}
         onClearFile={onClearContext}
         onAddAttachment={handleAddAttachment}
+        selectedAgent={selectedAgent}
+        onClearAgent={() => onAgentSelect?.(null)}
+        currentProvider={currentProvider}
+        hasMessages={hasMessages}
+        onRewind={onRewind}
       />
 
       {/* 输入区域 */}
@@ -1495,7 +1860,11 @@ export const ChatInputBox = ({
           className="input-editable"
           contentEditable={!disabled}
           data-placeholder={placeholder}
-          onInput={handleInput}
+          onInput={(e) => {
+            // 传递原生事件的 isComposing 状态，这比 React 状态更准确
+            // 可以正确捕获 compositionStart 之前的输入
+            handleInput((e.nativeEvent as InputEvent).isComposing);
+          }}
           onKeyDown={handleKeyDown}
           onKeyUp={handleKeyUp}
           onBeforeInput={(e) => {
@@ -1508,7 +1877,7 @@ export const ChatInputBox = ({
                 return;
               }
               // 补全菜单打开时不发送消息
-              if (fileCompletion.isOpen || commandCompletion.isOpen) {
+              if (fileCompletion.isOpen || commandCompletion.isOpen || agentCompletion.isOpen) {
                 return;
               }
               // 只有在非加载状态且非输入法组合状态时才允许提交
@@ -1541,16 +1910,26 @@ export const ChatInputBox = ({
         disabled={disabled || isLoading}
         hasInputContent={hasContent || attachments.length > 0}
         isLoading={isLoading}
+        isEnhancing={isEnhancing}
         selectedModel={selectedModel}
         permissionMode={permissionMode}
         currentProvider={currentProvider}
+        reasoningEffort={reasoningEffort}
         onSubmit={handleSubmit}
         onStop={onStop}
         onModeSelect={handleModeSelect}
         onModelSelect={handleModelSelect}
         onProviderSelect={onProviderSelect}
+        onReasoningChange={onReasoningChange}
+        onEnhancePrompt={handleEnhancePrompt}
         alwaysThinkingEnabled={alwaysThinkingEnabled}
         onToggleThinking={onToggleThinking}
+        streamingEnabled={streamingEnabled}
+        onStreamingEnabledChange={onStreamingEnabledChange}
+        selectedAgent={selectedAgent}
+        onAgentSelect={(agent) => onAgentSelect?.(agent)}
+        onOpenAgentSettings={onOpenAgentSettings}
+        onClearAgent={() => onAgentSelect?.(null)}
       />
 
       {/* @ 文件引用下拉菜单 */}
@@ -1560,7 +1939,7 @@ export const ChatInputBox = ({
         items={fileCompletion.items}
         selectedIndex={fileCompletion.activeIndex}
         loading={fileCompletion.loading}
-        emptyText="无匹配文件"
+        emptyText={t('chat.noMatchingFiles')}
         onClose={fileCompletion.close}
         onSelect={(_, index) => fileCompletion.selectIndex(index)}
         onMouseEnter={fileCompletion.handleMouseEnter}
@@ -1574,10 +1953,24 @@ export const ChatInputBox = ({
         items={commandCompletion.items}
         selectedIndex={commandCompletion.activeIndex}
         loading={commandCompletion.loading}
-        emptyText="无匹配命令"
+        emptyText={t('chat.noMatchingCommands')}
         onClose={commandCompletion.close}
         onSelect={(_, index) => commandCompletion.selectIndex(index)}
         onMouseEnter={commandCompletion.handleMouseEnter}
+      />
+
+      {/* # 智能体选择下拉菜单 */}
+      <CompletionDropdown
+        isVisible={agentCompletion.isOpen}
+        position={agentCompletion.position}
+        width={350}
+        items={agentCompletion.items}
+        selectedIndex={agentCompletion.activeIndex}
+        loading={agentCompletion.loading}
+        emptyText={t('chat.noAvailableAgents')}
+        onClose={agentCompletion.close}
+        onSelect={(_, index) => agentCompletion.selectIndex(index)}
+        onMouseEnter={agentCompletion.handleMouseEnter}
       />
 
       {/* 悬浮提示 Tooltip (使用 Portal 或 Fixed 定位以突破 overflow 限制) */}
@@ -1597,6 +1990,17 @@ export const ChatInputBox = ({
           {tooltip.text}
         </div>
       )}
+
+      {/* 增强提示词对话框 */}
+      <PromptEnhancerDialog
+        isOpen={showEnhancerDialog}
+        isLoading={isEnhancing}
+        originalPrompt={originalPrompt}
+        enhancedPrompt={enhancedPrompt}
+        onUseEnhanced={handleUseEnhancedPrompt}
+        onKeepOriginal={handleKeepOriginalPrompt}
+        onClose={handleCloseEnhancerDialog}
+      />
     </div>
   );
 };

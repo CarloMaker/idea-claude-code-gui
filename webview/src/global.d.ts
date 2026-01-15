@@ -58,6 +58,22 @@ interface Window {
   addErrorMessage?: (message: string) => void;
 
   /**
+   * Add single history message (used for Codex session loading)
+   */
+  addHistoryMessage?: (message: any) => void;
+
+  /**
+   * Add user message to chat (used for external Quick Fix feature)
+   * Immediately shows the user's message in the chat UI before AI response
+   */
+  addUserMessage?: (content: string) => void;
+
+  /**
+   * Set current session ID (for rewind feature)
+   */
+  setSessionId?: (sessionId: string) => void;
+
+  /**
    * Add toast notification (called from backend)
    */
   addToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
@@ -95,6 +111,11 @@ interface Window {
   showPermissionDialog?: (json: string) => void;
 
   /**
+   * Show AskUserQuestion dialog
+   */
+  showAskUserQuestionDialog?: (json: string) => void;
+
+  /**
    * Add selection info (file and line numbers) - 自动监听，只更新 ContextBar
    */
   addSelectionInfo?: (selectionInfo: string) => void;
@@ -130,6 +151,13 @@ interface Window {
   updateMcpServers?: (json: string) => void;
 
   /**
+   * Update MCP server connection status
+   */
+  updateMcpServerStatus?: (json: string) => void;
+
+  mcpServerToggled?: (json: string) => void;
+
+  /**
    * Update providers list
    */
   updateProviders?: (json: string) => void;
@@ -140,6 +168,16 @@ interface Window {
   updateActiveProvider?: (providerId: string) => void;
 
   updateThinkingEnabled?: (json: string) => void;
+
+  /**
+   * Update streaming enabled setting
+   */
+  updateStreamingEnabled?: (json: string) => void;
+
+  /**
+   * Update send shortcut setting
+   */
+  updateSendShortcut?: (json: string) => void;
 
   /**
    * Update current Claude config
@@ -207,13 +245,19 @@ interface Window {
   __pendingSlashCommands?: string;
 
   /**
+   * Pending session ID before App component mounts (for rewind feature)
+   */
+  __pendingSessionId?: string;
+
+  /**
    * Apply IDEA editor font configuration (called from Java backend)
-   * @param config Font configuration object containing fontFamily, fontSize, lineSpacing
+   * @param config Font configuration object containing fontFamily, fontSize, lineSpacing, fallbackFonts
    */
   applyIdeaFontConfig?: (config: {
     fontFamily: string;
     fontSize: number;
     lineSpacing: number;
+    fallbackFonts?: string[];
   }) => void;
 
   /**
@@ -223,5 +267,158 @@ interface Window {
     fontFamily: string;
     fontSize: number;
     lineSpacing: number;
+    fallbackFonts?: string[];
   };
+
+  /**
+   * Apply IDEA language configuration (called from Java backend)
+   * @param config Language configuration object containing language code and IDEA locale
+   */
+  applyIdeaLanguageConfig?: (config: {
+    language: string;
+    ideaLocale?: string;
+  }) => void;
+
+  /**
+   * Pending language config before applyIdeaLanguageConfig is registered
+   */
+  __pendingLanguageConfig?: {
+    language: string;
+    ideaLocale?: string;
+  };
+
+  /**
+   * Update enhanced prompt result (for prompt enhancer feature)
+   */
+  updateEnhancedPrompt?: (result: string) => void;
+
+  /**
+   * Editor font config received callback - 接收 IDEA 编辑器字体配置
+   */
+  onEditorFontConfigReceived?: (json: string) => void;
+
+  /**
+   * Update agents list
+   */
+  updateAgents?: (json: string) => void;
+
+  /**
+   * Agent operation result callback
+   */
+  agentOperationResult?: (json: string) => void;
+
+  /**
+   * Selected agent received callback - 初始化时接收当前选中的智能体
+   */
+  onSelectedAgentReceived?: (json: string) => void;
+
+  /**
+   * Selected agent changed callback - 选择智能体后的回调
+   */
+  onSelectedAgentChanged?: (json: string) => void;
+
+  /**
+   * Update Codex providers list
+   */
+  updateCodexProviders?: (json: string) => void;
+
+  /**
+   * Update active Codex provider
+   */
+  updateActiveCodexProvider?: (json: string) => void;
+
+  /**
+   * Update current Codex config (from ~/.codex/)
+   */
+  updateCurrentCodexConfig?: (json: string) => void;
+
+// ============================================================================
+  // 🔧 流式传输回调函数
+  // ============================================================================
+
+  /**
+   * Stream start callback - 流式传输开始时调用
+   */
+  onStreamStart?: () => void;
+
+  /**
+   * Content delta callback - 收到内容增量时调用
+   * @param delta 内容增量字符串
+   */
+  onContentDelta?: (delta: string) => void;
+
+  /**
+   * Thinking delta callback - 收到思考增量时调用
+   * @param delta 思考增量字符串
+   */
+  onThinkingDelta?: (delta: string) => void;
+
+  /**
+   * Stream end callback - 流式传输结束时调用
+   */
+  onStreamEnd?: () => void;
+
+  /**
+   * Update streaming enabled configuration - 接收流式传输配置
+   */
+  updateStreamingEnabled?: (json: string) => void;
+
+  /**
+   * Rewind result callback - 回滚操作结果回调
+   */
+  onRewindResult?: (json: string) => void;
+
+  // ============================================================================
+  // 🔧 依赖管理回调函数
+  // ============================================================================
+
+  /**
+   * Update dependency status callback - 更新依赖状态
+   */
+  updateDependencyStatus?: (json: string) => void;
+
+  /**
+   * Dependency install progress callback - 依赖安装进度
+   */
+  dependencyInstallProgress?: (json: string) => void;
+
+  /**
+   * Dependency install result callback - 依赖安装结果
+   */
+  dependencyInstallResult?: (json: string) => void;
+
+  /**
+   * Dependency uninstall result callback - 依赖卸载结果
+   */
+  dependencyUninstallResult?: (json: string) => void;
+
+  /**
+   * Node environment status callback - Node.js 环境状态
+   */
+  nodeEnvironmentStatus?: (json: string) => void;
+
+  /**
+   * Dependency update available callback - 依赖更新检查结果
+   */
+  dependencyUpdateAvailable?: (json: string) => void;
+
+  /**
+   * Pending dependency updates payload before settings initialization
+   */
+  __pendingDependencyUpdates?: string;
+
+  /**
+   * Pending dependency status payload before React initialization
+   */
+  __pendingDependencyStatus?: string;
+
+  /**
+   * Pending user message before addUserMessage is registered (for Quick Fix feature)
+   */
+  __pendingUserMessage?: string;
+
+  /**
+   * Pending loading state before showLoading is registered (for Quick Fix feature)
+   */
+  __pendingLoadingState?: boolean;
 }

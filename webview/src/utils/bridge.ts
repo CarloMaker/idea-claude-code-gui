@@ -20,7 +20,7 @@ const callBridge = (payload: string) => {
 };
 
 export const sendBridgeEvent = (event: string, content = '') => {
-  callBridge(`${event}:${content}`);
+  return callBridge(`${event}:${content}`);
 };
 
 export const openFile = (filePath?: string) => {
@@ -57,4 +57,13 @@ export const showMultiEditDiff = (
   currentContent?: string
 ) => {
   sendToJava('show_multi_edit_diff', { filePath, edits, currentContent });
+};
+
+/**
+ * Rewind files to a specific user message state
+ * @param sessionId - Session ID
+ * @param userMessageId - User message UUID to rewind to
+ */
+export const rewindFiles = (sessionId: string, userMessageId: string) => {
+  sendToJava('rewind_files', { sessionId, userMessageId });
 };

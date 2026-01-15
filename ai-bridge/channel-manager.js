@@ -22,53 +22,28 @@
  * - 消息和其他参数通过 stdin 以 JSON 格式传递
  */
 
-// 启动诊断日志（帮助排查 exit code 1 问题）
-console.log('[STARTUP] channel-manager.js 开始加载...');
-console.log('[STARTUP] Node.js 版本:', process.version);
-console.log('[STARTUP] 当前工作目录:', process.cwd());
-console.log('[STARTUP] HOME 环境变量:', process.env.HOME || process.env.USERPROFILE || '未设置');
-
 // 共用工具
 import { readStdinData } from './utils/stdin-utils.js';
+import { handleClaudeCommand } from './channels/claude-channel.js';
+import { handleCodexCommand } from './channels/codex-channel.js';
+import { getSdkStatus, isClaudeSdkAvailable, isCodexSdkAvailable } from './utils/sdk-loader.js';
 
-// Claude 服务
-console.log('[STARTUP] 正在加载 Claude 服务模块...');
-let claudeSendMessage, claudeSendMessageWithAttachments, claudeGetSlashCommands, claudeGetSessionMessages;
-try {
-  const messageService = await import('./services/claude/message-service.js');
-  claudeSendMessage = messageService.sendMessage;
-  claudeSendMessageWithAttachments = messageService.sendMessageWithAttachments;
-  claudeGetSlashCommands = messageService.getSlashCommands;
-  console.log('[STARTUP] message-service.js 加载成功');
-
-  const sessionService = await import('./services/claude/session-service.js');
-  claudeGetSessionMessages = sessionService.getSessionMessages;
-  console.log('[STARTUP] session-service.js 加载成功');
-} catch (importError) {
-  console.error('[STARTUP_ERROR] 模块加载失败:', importError.message);
-  console.error('[STARTUP_ERROR] 错误类型:', importError.name);
-  if (importError.code === 'ERR_MODULE_NOT_FOUND') {
-    console.error('[STARTUP_ERROR] 可能原因: node_modules 未安装或依赖缺失');
-    console.error('[STARTUP_ERROR] 请在 ai-bridge 目录运行: npm install');
-  }
-  console.log(JSON.stringify({
-    success: false,
-    error: '模块加载失败: ' + importError.message
-  }));
-  process.exit(1);
-}
-
-// Codex 服务 (暂时禁用 - SDK 已卸载)
-// import { sendMessage as codexSendMessage } from './services/codex/message-service.js';
-
-// 启动成功标记
-console.log('[STARTUP] 所有模块加载完成');
+// 🔧 诊断日志：启动信息
+console.log('[DIAG-ENTRY] ========== CHANNEL-MANAGER STARTUP ==========');
+console.log('[DIAG-ENTRY] Node.js version:', process.version);
+console.log('[DIAG-ENTRY] Platform:', process.platform);
+console.log('[DIAG-ENTRY] CWD:', process.cwd());
+console.log('[DIAG-ENTRY] argv:', process.argv);
 
 // 命令行参数解析
 const provider = process.argv[2];
 const command = process.argv[3];
 const args = process.argv.slice(4);
-console.log('[STARTUP] 命令参数: provider=' + provider + ', command=' + command);
+
+// 🔧 诊断日志：参数信息
+console.log('[DIAG-ENTRY] Provider:', provider);
+console.log('[DIAG-ENTRY] Command:', command);
+console.log('[DIAG-ENTRY] Args:', args);
 
 // 错误处理
 process.on('uncaughtException', (error) => {
@@ -90,66 +65,58 @@ process.on('unhandledRejection', (reason) => {
 });
 
 /**
- * Claude 命令处理
+ * 处理系统级命令（如 SDK 状态检查）
  */
-async function handleClaudeCommand(command, args, stdinData) {
+async function handleSystemCommand(command, args, stdinData) {
   switch (command) {
-    case 'send': {
-      if (stdinData && stdinData.message !== undefined) {
-        const { message, sessionId, cwd, permissionMode, model, openedFiles } = stdinData;
-        await claudeSendMessage(message, sessionId || '', cwd || '', permissionMode || '', model || '', openedFiles || null);
-      } else {
-        await claudeSendMessage(args[0], args[1], args[2], args[3], args[4]);
-      }
-      break;
-    }
-
-    case 'sendWithAttachments': {
-      if (stdinData && stdinData.message !== undefined) {
-        const { message, sessionId, cwd, permissionMode, model, attachments, openedFiles } = stdinData;
-        await claudeSendMessageWithAttachments(
-          message,
-          sessionId || '',
-          cwd || '',
-          permissionMode || '',
-          model || '',
-          attachments ? { attachments, openedFiles } : { openedFiles }
-        );
-      } else {
-        await claudeSendMessageWithAttachments(args[0], args[1], args[2], args[3], args[4], stdinData);
-      }
-      break;
-    }
-
-    case 'getSession':
-      await claudeGetSessionMessages(args[0], args[1]);
+    case 'getSdkStatus':
+      // 返回所有 SDK 的安装状态
+      const status = getSdkStatus();
+      console.log(JSON.stringify({
+        success: true,
+        data: status
+      }));
       break;
 
-    case 'getSlashCommands': {
-      // 获取斜杠命令列表
-      const cwd = stdinData?.cwd || args[0] || null;
-      await claudeGetSlashCommands(cwd);
+    case 'checkClaudeSdk':
+      // 检查 Claude SDK 是否可用
+      console.log(JSON.stringify({
+        success: true,
+        available: isClaudeSdkAvailable()
+      }));
       break;
-    }
+
+    case 'checkCodexSdk':
+      // 检查 Codex SDK 是否可用
+      console.log(JSON.stringify({
+        success: true,
+        available: isCodexSdkAvailable()
+      }));
+      break;
 
     default:
-      throw new Error(`Unknown Claude command: ${command}`);
+      console.log(JSON.stringify({
+        success: false,
+        error: 'Unknown system command: ' + command
+      }));
+      process.exit(1);
   }
 }
 
-/**
- * Codex 命令处理 (暂时禁用 - SDK 已卸载)
- */
-async function handleCodexCommand(command, args, stdinData) {
-  throw new Error('Codex support is temporarily disabled. SDK not installed.');
-}
+const providerHandlers = {
+  claude: handleClaudeCommand,
+  codex: handleCodexCommand,
+  system: handleSystemCommand
+};
 
 // 执行命令
 (async () => {
+  console.log('[DIAG-EXEC] ========== STARTING EXECUTION ==========');
   try {
     // 验证 provider
-    if (!provider || !['claude', 'codex'].includes(provider)) {
-      console.error('Invalid provider. Use "claude" or "codex"');
+    console.log('[DIAG-EXEC] Validating provider...');
+    if (!provider || !providerHandlers[provider]) {
+      console.error('Invalid provider. Use "claude", "codex", or "system"');
       console.log(JSON.stringify({
         success: false,
         error: 'Invalid provider: ' + provider
@@ -168,13 +135,27 @@ async function handleCodexCommand(command, args, stdinData) {
     }
 
     // 读取 stdin 数据
+    console.log('[DIAG-EXEC] Reading stdin data...');
     const stdinData = await readStdinData(provider);
+    console.log('[DIAG-EXEC] Stdin data received, keys:', stdinData ? Object.keys(stdinData) : 'null');
 
     // 根据 provider 分发
-    if (provider === 'claude') {
-      await handleClaudeCommand(command, args, stdinData);
-    } else if (provider === 'codex') {
-      await handleCodexCommand(command, args, stdinData);
+    console.log('[DIAG-EXEC] Dispatching to handler:', provider);
+    const handler = providerHandlers[provider];
+    await handler(command, args, stdinData);
+    console.log('[DIAG-EXEC] Handler completed successfully');
+
+    // 🔥 重要：不要使用 process.exit(0)，因为它会在 stdout 缓冲区刷新前终止进程
+    // 导致大量 JSON 输出（如 getSession 返回的历史消息）被截断
+    // 使用 process.exitCode 设置退出码，让进程自然退出，确保所有 I/O 完成
+    process.exitCode = 0;
+
+    // 🔥 对于 rewindFiles 命令，需要强制退出
+    // 因为它会恢复 SDK 会话，会话的 MCP 连接可能保持打开状态，导致进程无法自然退出
+    // rewindFiles 的输出很小，不会有截断问题
+    if (command === 'rewindFiles') {
+      // 给一点时间让 stdout 缓冲区刷新
+      setTimeout(() => process.exit(0), 100);
     }
 
   } catch (error) {

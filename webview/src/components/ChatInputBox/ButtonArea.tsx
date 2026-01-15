@@ -1,27 +1,36 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ButtonAreaProps, ModelInfo, PermissionMode } from './types';
-import { ConfigSelect, ModelSelect, ModeSelect } from './selectors';
+import type { ButtonAreaProps, ModelInfo, PermissionMode, ReasoningEffort } from './types';
+import { ConfigSelect, ModelSelect, ModeSelect, ReasoningSelect } from './selectors';
 import { CLAUDE_MODELS, CODEX_MODELS } from './types';
 
 /**
  * ButtonArea - 底部工具栏组件
- * 包含模式选择、模型选择、附件按钮、发送/停止按钮
+ * 包含模式选择、模型选择、附件按钮、增强提示词按钮、发送/停止按钮
  */
 export const ButtonArea = ({
   disabled = false,
   hasInputContent = false,
   isLoading = false,
+  isEnhancing = false,
   selectedModel = 'claude-sonnet-4-5',
-  permissionMode = 'default',
+  permissionMode = 'bypassPermissions',
   currentProvider = 'claude',
+  reasoningEffort = 'medium',
   onSubmit,
   onStop,
   onModeSelect,
   onModelSelect,
   onProviderSelect,
+  onReasoningChange,
+  onEnhancePrompt,
   alwaysThinkingEnabled = false,
   onToggleThinking,
+  streamingEnabled = false,
+  onStreamingEnabledChange,
+  selectedAgent,
+  onAgentSelect,
+  onOpenAgentSettings,
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
   // const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,23 +120,56 @@ export const ButtonArea = ({
     onProviderSelect?.(providerId);
   }, [onProviderSelect]);
 
+  /**
+   * 处理思考深度选择 (Codex only)
+   */
+  const handleReasoningChange = useCallback((effort: ReasoningEffort) => {
+    onReasoningChange?.(effort);
+  }, [onReasoningChange]);
+
+  /**
+   * 处理增强提示词按钮点击
+   */
+  const handleEnhanceClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEnhancePrompt?.();
+  }, [onEnhancePrompt]);
+
   return (
-    <div className="button-area">
+    <div className="button-area" data-provider={currentProvider}>
       {/* 左侧：选择器 */}
       <div className="button-area-left">
-        <ConfigSelect 
+        <ConfigSelect
           currentProvider={currentProvider}
           onProviderChange={handleProviderSelect}
           alwaysThinkingEnabled={alwaysThinkingEnabled}
           onToggleThinking={onToggleThinking}
+          streamingEnabled={streamingEnabled}
+          onStreamingEnabledChange={onStreamingEnabledChange}
+          selectedAgent={selectedAgent}
+          onAgentSelect={onAgentSelect}
+          onOpenAgentSettings={onOpenAgentSettings}
         />
-        <ModeSelect value={permissionMode} onChange={handleModeSelect} />
+        <ModeSelect value={permissionMode} onChange={handleModeSelect} provider={currentProvider} />
         <ModelSelect value={selectedModel} onChange={handleModelSelect} models={availableModels} currentProvider={currentProvider} />
+        {currentProvider === 'codex' && (
+          <ReasoningSelect value={reasoningEffort} onChange={handleReasoningChange} />
+        )}
       </div>
 
       {/* 右侧:工具按钮 */}
       <div className="button-area-right">
         <div className="button-divider" />
+
+        {/* 增强提示词按钮 */}
+        <button
+          className="enhance-prompt-button has-tooltip"
+          onClick={handleEnhanceClick}
+          disabled={disabled || !hasInputContent || isLoading || isEnhancing}
+          data-tooltip={`${t('promptEnhancer.tooltip')} (${t('promptEnhancer.shortcut')})`}
+        >
+          <span className={`codicon ${isEnhancing ? 'codicon-loading codicon-modifier-spin' : 'codicon-sparkle'}`} />
+        </button>
 
         {/* 发送/停止按钮 */}
         {isLoading ? (

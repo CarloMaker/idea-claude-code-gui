@@ -66,6 +66,8 @@ export type CompletionType =
   | 'file'
   | 'directory'
   | 'command'
+  | 'agent'
+  | 'info'
   | 'separator'
   | 'section-header';
 
@@ -137,7 +139,7 @@ export interface DropdownPosition {
  * 触发查询信息
  */
 export interface TriggerQuery {
-  /** 触发符号 ('@' 或 '/') */
+  /** 触发符号 ('@' 或 '/' 或 '#') */
   trigger: string;
   /** 搜索关键词 */
   query: string;
@@ -145,6 +147,15 @@ export interface TriggerQuery {
   start: number;
   /** 查询结束的字符偏移位置 */
   end: number;
+}
+
+/**
+ * 选中的智能体信息
+ */
+export interface SelectedAgent {
+  id: string;
+  name: string;
+  prompt?: string;
 }
 
 // ============================================================
@@ -238,19 +249,24 @@ export const CLAUDE_MODELS: ModelInfo[] = [
  */
 export const CODEX_MODELS: ModelInfo[] = [
   {
-    id: 'gpt-5.1-codex',
-    label: 'gpt-5.1-codex',
-    description: '针对codex进行了优化'
+    id: 'gpt-5.2-codex',
+    label: 'gpt-5.2-codex',
+    description: 'Latest frontier agentic coding model.'
+  },
+  {
+    id: 'gpt-5.1-codex-max',
+    label: 'gpt-5.1-codex-max',
+    description: 'Codex-optimized flagship for deep and fast reasoning.'
   },
   {
     id: 'gpt-5.1-codex-mini',
     label: 'gpt-5.1-codex-mini',
-    description: '针对codex进行了优化。更便宜、更快，但性能较差'
+    description: 'Optimized for codex. Cheaper, faster, but less capable.'
   },
   {
-    id: 'gpt-5.1',
-    label: 'gpt-5.1',
-    description: '具有广泛的世界知识和强大的一般推理能力'
+    id: 'gpt-5.2',
+    label: 'gpt-5.2',
+    description: 'Latest frontier model with improvements across knowledge.'
   },
 ];
 
@@ -274,8 +290,35 @@ export interface ProviderInfo {
  */
 export const AVAILABLE_PROVIDERS: ProviderInfo[] = [
   { id: 'claude', label: 'Claude Code', icon: 'codicon-terminal', enabled: true },
-  { id: 'codex', label: 'Codex Cli', icon: 'codicon-terminal', enabled: false },
+  { id: 'codex', label: 'Codex Cli', icon: 'codicon-terminal', enabled: true },
   { id: 'gemini', label: 'Gemini Cli', icon: 'codicon-terminal', enabled: false },
+];
+
+/**
+ * Codex Reasoning Effort (思考深度)
+ * Controls the depth of reasoning for Codex models
+ * Valid values: low, medium, high, xhigh
+ */
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+
+/**
+ * Reasoning level information
+ */
+export interface ReasoningInfo {
+  id: ReasoningEffort;
+  label: string;
+  icon: string;
+  description?: string;
+}
+
+/**
+ * Available reasoning levels for Codex
+ */
+export const REASONING_LEVELS: ReasoningInfo[] = [
+  { id: 'low', label: 'Low', icon: 'codicon-circle-small', description: 'Quick responses with basic reasoning' },
+  { id: 'medium', label: 'Medium', icon: 'codicon-circle-filled', description: 'Balanced thinking (default)' },
+  { id: 'high', label: 'High', icon: 'codicon-circle-large-filled', description: 'Deep reasoning for complex tasks' },
+  { id: 'xhigh', label: 'Max', icon: 'codicon-flame', description: 'Maximum reasoning depth' },
 ];
 
 // ============================================================
@@ -356,8 +399,42 @@ export interface ChatInputBoxProps {
   onModelSelect?: (modelId: string) => void;
   /** 切换提供商 */
   onProviderSelect?: (providerId: string) => void;
+  /** 当前思考深度 (Codex only) */
+  reasoningEffort?: ReasoningEffort;
+  /** 切换思考深度回调 (Codex only) */
+  onReasoningChange?: (effort: ReasoningEffort) => void;
   /** 切换思考模式 */
   onToggleThinking?: (enabled: boolean) => void;
+  /** 是否开启流式传输 */
+  streamingEnabled?: boolean;
+  /** 切换流式传输 */
+  onStreamingEnabledChange?: (enabled: boolean) => void;
+
+  /** 发送快捷键设置: 'enter' = Enter发送 | 'cmdEnter' = Cmd/Ctrl+Enter发送 */
+  sendShortcut?: 'enter' | 'cmdEnter';
+
+  /** 当前选中的智能体 */
+  selectedAgent?: SelectedAgent | null;
+  /** 选择智能体回调 */
+  onAgentSelect?: (agent: SelectedAgent | null) => void;
+  /** 清除智能体回调 */
+  onClearAgent?: () => void;
+  /** 打开智能体设置回调 */
+  onOpenAgentSettings?: () => void;
+
+  /** 是否有消息（用于回滚按钮显示） */
+  hasMessages?: boolean;
+  /** 回溯文件回调 */
+  onRewind?: () => void;
+
+  /** 🔧 SDK 是否已安装（用于在未安装时禁止提问） */
+  sdkInstalled?: boolean;
+  /** 🔧 SDK 状态是否正在加载 */
+  sdkStatusLoading?: boolean;
+  /** 🔧 前往安装 SDK 回调 */
+  onInstallSdk?: () => void;
+  /** 显示 Toast 提示 */
+  addToast?: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 /**
@@ -370,12 +447,16 @@ export interface ButtonAreaProps {
   hasInputContent?: boolean;
   /** 是否在对话中 */
   isLoading?: boolean;
+  /** 是否正在增强提示词 */
+  isEnhancing?: boolean;
   /** 当前模型 */
   selectedModel?: string;
   /** 当前模式 */
   permissionMode?: PermissionMode;
   /** 当前提供商 */
   currentProvider?: string;
+  /** 当前思考深度 (Codex only) */
+  reasoningEffort?: ReasoningEffort;
 
   // 事件回调
   onSubmit?: () => void;
@@ -383,10 +464,26 @@ export interface ButtonAreaProps {
   onModeSelect?: (mode: PermissionMode) => void;
   onModelSelect?: (modelId: string) => void;
   onProviderSelect?: (providerId: string) => void;
+  /** 切换思考深度回调 (Codex only) */
+  onReasoningChange?: (effort: ReasoningEffort) => void;
+  /** 增强提示词回调 */
+  onEnhancePrompt?: () => void;
   /** 是否开启始终思考 */
   alwaysThinkingEnabled?: boolean;
   /** 切换思考模式 */
   onToggleThinking?: (enabled: boolean) => void;
+  /** 是否开启流式传输 */
+  streamingEnabled?: boolean;
+  /** 切换流式传输 */
+  onStreamingEnabledChange?: (enabled: boolean) => void;
+  /** 当前选中的智能体 */
+  selectedAgent?: SelectedAgent | null;
+  /** 智能体选择回调 */
+  onAgentSelect?: (agent: SelectedAgent) => void;
+  /** 清除智能体回调 */
+  onClearAgent?: () => void;
+  /** 打开智能体设置回调 */
+  onOpenAgentSettings?: () => void;
 }
 
 /**

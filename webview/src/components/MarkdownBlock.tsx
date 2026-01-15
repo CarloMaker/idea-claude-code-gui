@@ -29,6 +29,7 @@ marked.setOptions({
 
 interface MarkdownBlockProps {
   content?: string;
+  isStreaming?: boolean; // App.tsx 传递的属性，MarkdownBlock 不使用
 }
 
 const MarkdownBlock = ({ content = '' }: MarkdownBlockProps) => {
@@ -194,7 +195,7 @@ const MarkdownBlock = ({ content = '' }: MarkdownBlockProps) => {
           <button
             className="image-preview-close"
             onClick={() => setPreviewSrc(null)}
-            title="关闭预览"
+            title={t('chat.closePreview')}
           >
             ×
           </button>

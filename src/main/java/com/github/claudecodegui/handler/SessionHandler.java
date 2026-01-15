@@ -1,17 +1,18 @@
 package com.github.claudecodegui.handler;
 
 import com.github.claudecodegui.ClaudeSession;
-import com.github.claudecodegui.util.JsUtils;
+import com.github.claudecodegui.bridge.NodeDetector;
+import com.github.claudecodegui.notifications.ClaudeNotifier;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.Project;
 
 import javax.swing.*;
 import java.io.File;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -64,16 +65,55 @@ public class SessionHandler extends BaseMessageHandler {
     }
 
     /**
-     * 发送消息到 Claude
+     * Send message to Claude
+     * 【FIX】Now parses JSON format to extract text and agent info
      */
-    private void handleSendMessage(String prompt) {
-        // long handlerStartTime = System.currentTimeMillis();
-        // LOG.info("[PERF][" + handlerStartTime + "] SessionHandler.handleSendMessage 开始处理");
+    private void handleSendMessage(String content) {
+        String nodeVersion = context.getClaudeSDKBridge().getCachedNodeVersion();
+        if (nodeVersion == null) {
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("addErrorMessage", escapeJs("未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。"));
+            });
+            return;
+        }
+        if (!NodeDetector.isVersionSupported(nodeVersion)) {
+            int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("addErrorMessage", escapeJs(
+                    "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
+            });
+            return;
+        }
+
+        // 【FIX】Parse JSON format to extract text and agent info for per-tab agent selection
+        String prompt;
+        String agentPrompt = null;
+        try {
+            Gson gson = new Gson();
+            JsonObject payload = gson.fromJson(content, JsonObject.class);
+            prompt = payload != null && payload.has("text") && !payload.get("text").isJsonNull()
+                ? payload.get("text").getAsString()
+                : content; // Fallback to raw content if not JSON
+
+            // Extract agent prompt from the message
+            if (payload != null && payload.has("agent") && !payload.get("agent").isJsonNull()) {
+                JsonObject agent = payload.getAsJsonObject("agent");
+                if (agent.has("prompt") && !agent.get("prompt").isJsonNull()) {
+                    agentPrompt = agent.get("prompt").getAsString();
+                    String agentName = agent.has("name") ? agent.get("name").getAsString() : "Unknown";
+                    LOG.info("[SessionHandler] Using agent from message: " + agentName);
+                }
+            }
+        } catch (Exception e) {
+            // If parsing fails, treat content as plain text (backward compatibility)
+            LOG.debug("[SessionHandler] Message is plain text, not JSON: " + e.getMessage());
+            prompt = content;
+        }
+
+        final String finalPrompt = prompt;
+        final String finalAgentPrompt = agentPrompt;
 
         CompletableFuture.runAsync(() -> {
-            // long asyncStartTime = System.currentTimeMillis();
-            // LOG.info("[PERF][" + asyncStartTime + "] 异步线程开始执行，等待时间: " + (asyncStartTime - handlerStartTime) + "ms");
-
             String currentWorkingDir = determineWorkingDirectory();
             String previousCwd = context.getSession().getCwd();
 
@@ -82,23 +122,35 @@ public class SessionHandler extends BaseMessageHandler {
                 LOG.info("[SessionHandler] Updated working directory: " + currentWorkingDir);
             }
 
-            // 权限模式由用户通过 UI 设置，不在这里覆盖
-            // context.getSession().setPermissionMode("default");  // 已移除：保留用户设置的权限模式
+            // Capture project for use in async callbacks
+            var project = context.getProject();
+            if (project != null) {
+                ClaudeNotifier.setWaiting(project);
+            }
 
-            // long beforeSendTime = System.currentTimeMillis();
-            // LOG.info("[PERF][" + beforeSendTime + "] 准备调用 session.send()，准备耗时: " + (beforeSendTime - asyncStartTime) + "ms");
-
-            context.getSession().send(prompt).exceptionally(ex -> {
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
+            // 【FIX】Pass agent prompt directly to session instead of relying on global setting
+            context.getSession().send(finalPrompt, finalAgentPrompt)
+                .thenRun(() -> {
+                    if (project != null) {
+                        ClaudeNotifier.showSuccess(project, "Task completed");
+                    }
+                })
+                .exceptionally(ex -> {
+                    LOG.error("Failed to send message", ex);
+                    if (project != null) {
+                        ClaudeNotifier.showError(project, "Task failed: " + ex.getMessage());
+                    }
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
+                    });
+                    return null;
                 });
-                return null;
-            });
         });
     }
 
     /**
      * 发送带附件的消息
+     * 【FIX】Now extracts agent info from payload for per-tab agent selection
      */
     private void handleSendMessageWithAttachments(String content) {
         try {
@@ -125,7 +177,19 @@ public class SessionHandler extends BaseMessageHandler {
                     atts.add(new ClaudeSession.Attachment(fileName, mediaType, data));
                 }
             }
-            sendMessageWithAttachments(text, atts);
+
+            // 【FIX】Extract agent prompt from the payload for per-tab agent selection
+            String agentPrompt = null;
+            if (payload != null && payload.has("agent") && !payload.get("agent").isJsonNull()) {
+                JsonObject agent = payload.getAsJsonObject("agent");
+                if (agent.has("prompt") && !agent.get("prompt").isJsonNull()) {
+                    agentPrompt = agent.get("prompt").getAsString();
+                    String agentName = agent.has("name") ? agent.get("name").getAsString() : "Unknown";
+                    LOG.info("[SessionHandler] Using agent from attachment message: " + agentName);
+                }
+            }
+
+            sendMessageWithAttachments(text, atts, agentPrompt);
         } catch (Exception e) {
             LOG.error("[SessionHandler] 解析附件负载失败: " + e.getMessage(), e);
             handleSendMessage(content);
@@ -133,9 +197,29 @@ public class SessionHandler extends BaseMessageHandler {
     }
 
     /**
-     * 发送带附件的消息到 Claude
+     * Send message with attachments to Claude
+     * 【FIX】Now accepts agent prompt parameter for per-tab agent selection
      */
-    private void sendMessageWithAttachments(String prompt, List<ClaudeSession.Attachment> attachments) {
+    private void sendMessageWithAttachments(String prompt, List<ClaudeSession.Attachment> attachments, String agentPrompt) {
+        // Version check (consistent with handleSendMessage)
+        String nodeVersion = context.getClaudeSDKBridge().getCachedNodeVersion();
+        if (nodeVersion == null) {
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("addErrorMessage", escapeJs("未检测到有效的 Node.js 版本，请在设置中配置或重新打开工具窗口。"));
+            });
+            return;
+        }
+        if (!NodeDetector.isVersionSupported(nodeVersion)) {
+            int minVersion = NodeDetector.MIN_NODE_MAJOR_VERSION;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                callJavaScript("addErrorMessage", escapeJs(
+                    "Node.js 版本过低 (" + nodeVersion + ")，插件需要 v" + minVersion + " 或更高版本才能正常运行。请在设置中配置正确的 Node.js 路径。"));
+            });
+            return;
+        }
+
+        final String finalAgentPrompt = agentPrompt;
+
         CompletableFuture.runAsync(() -> {
             String currentWorkingDir = determineWorkingDirectory();
             String previousCwd = context.getSession().getCwd();
@@ -144,15 +228,29 @@ public class SessionHandler extends BaseMessageHandler {
                 LOG.info("[SessionHandler] Updated working directory: " + currentWorkingDir);
             }
 
-            // 权限模式由用户通过 UI 设置，不在这里覆盖
-            // context.getSession().setPermissionMode("default");  // 已移除：保留用户设置的权限模式
+            // Capture project for use in async callbacks
+            var project = context.getProject();
+            if (project != null) {
+                ClaudeNotifier.setWaiting(project);
+            }
 
-            context.getSession().send(prompt, attachments).exceptionally(ex -> {
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
+            // 【FIX】Pass agent prompt directly to session instead of relying on global setting
+            context.getSession().send(prompt, attachments, finalAgentPrompt)
+                .thenRun(() -> {
+                    if (project != null) {
+                        ClaudeNotifier.showSuccess(project, "Task completed");
+                    }
+                })
+                .exceptionally(ex -> {
+                    LOG.error("Failed to send message with attachments", ex);
+                    if (project != null) {
+                        ClaudeNotifier.showError(project, "Task failed: " + ex.getMessage());
+                    }
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        callJavaScript("addErrorMessage", escapeJs("发送失败: " + ex.getMessage()));
+                    });
+                    return null;
                 });
-                return null;
-            });
         });
     }
 
