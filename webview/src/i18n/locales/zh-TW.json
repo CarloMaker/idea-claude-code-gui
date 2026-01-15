@@ -116,8 +116,12 @@
         "level6": "最大（140%）"
       },
       "editorFont": {
-        "label": "字體（跟隨編輯器字體）",
-        "hint": "此處暫時不可修改，如需修改，請在 IDEA 設定 → 編輯器 → 字體 中調整（重啟 IDEA 後本外掛字體生效）"
+        "label": "字體系列",
+        "hint": "目前使用 IDEA 編輯器字體。在下方選擇自定義字體以覆蓋。",
+        "ideaDefault": "IDEA 編輯器字體（預設）",
+        "customHint": "使用自定義字體。重置以使用 IDEA 編輯器字體。",
+        "resetToIdea": "重置為 IDEA 字體",
+        "preview": "預覽"
       },
       "sendShortcut": {
         "label": "發送快捷鍵",

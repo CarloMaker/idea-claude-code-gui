@@ -116,8 +116,12 @@
         "level6": "Maximale (140%)"
       },
       "editorFont": {
-        "label": "Police (suit la police de l'éditeur)",
-        "hint": "Non modifiable ici. Pour modifier, allez dans Paramètres IDEA → Éditeur → Police (redémarrez IDEA pour que la police du plugin prenne effet)"
+        "label": "Famille de Police",
+        "hint": "Actuellement utilise la police de l'éditeur IDEA. Sélectionnez une police personnalisée ci-dessous pour remplacer.",
+        "ideaDefault": "Police de l'Éditeur IDEA (Par Défaut)",
+        "customHint": "Utilisant une police personnalisée. Réinitialiser pour utiliser la police de l'éditeur IDEA.",
+        "resetToIdea": "Réinitialiser à la Police IDEA",
+        "preview": "Aperçu"
       },
       "sendShortcut": {
         "label": "Raccourci d'envoi",

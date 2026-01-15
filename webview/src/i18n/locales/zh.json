@@ -122,8 +122,12 @@
         "level6": "最大（140%）"
       },
       "editorFont": {
-        "label": "字体（跟随编辑器字体）",
-        "hint": "此处暂时不可修改，如需修改，请在 IDEA 设置 → 编辑器 → 字体 中调整（重启 IDEA 后本插件字体生效）"
+        "label": "字体系列",
+        "hint": "当前使用 IDEA 编辑器字体。在下方选择自定义字体以覆盖。",
+        "ideaDefault": "IDEA 编辑器字体（默认）",
+        "customHint": "使用自定义字体。重置以使用 IDEA 编辑器字体。",
+        "resetToIdea": "重置为 IDEA 字体",
+        "preview": "预览"
       },
       "streaming": {
         "label": "流式传输",

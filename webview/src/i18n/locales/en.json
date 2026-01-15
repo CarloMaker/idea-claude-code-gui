@@ -122,8 +122,12 @@
         "level6": "Largest (140%)"
       },
       "editorFont": {
-        "label": "Font (follows editor font)",
-        "hint": "Not editable here. To modify, go to IDEA Settings → Editor → Font (restart IDEA for plugin font to take effect)"
+        "label": "Font Family",
+        "hint": "Currently using IDEA editor font. Select a custom font below to override.",
+        "ideaDefault": "IDEA Editor Font (Default)",
+        "customHint": "Using custom font. Reset to use IDEA editor font.",
+        "resetToIdea": "Reset to IDEA Font",
+        "preview": "Preview"
       },
       "streaming": {
         "label": "Streaming",

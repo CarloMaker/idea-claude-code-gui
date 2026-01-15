@@ -1,0 +1,880 @@
+{
+  "common": {
+    "ready": "Pronto",
+    "loading": "Caricamento",
+    "save": "Salva",
+    "cancel": "Annulla",
+    "confirm": "Conferma",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "add": "Aggiungi",
+    "back": "Indietro",
+    "close": "Chiudi",
+    "newSession": "Nuova Sessione",
+    "newTab": "Nuova Scheda",
+    "history": "Cronologia",
+    "settings": "Impostazioni",
+    "thinking": "Pensiero",
+    "thinkingProcess": "Processo di Pensiero",
+    "success": "Successo",
+    "error": "Errore",
+    "warning": "Avviso",
+    "info": "Info",
+    "seconds": "s",
+    "minutes": "m"
+  },
+  "chat": {
+    "sendMessage": "Invia messaggio a {{provider}}",
+    "createNewSession": "Crea Nuova Sessione",
+    "confirmNewSession": "La sessione corrente ha messaggi. Sei sicuro di voler creare una nuova sessione?",
+    "confirmInterrupt": "Una conversazione è in corso. Creando una nuova sessione la interromperai. Continuare?",
+    "requestInterrupted": "Richiesta interrotta dall'utente",
+    "uploadedFiles": "File caricati: {{files}}",
+    "emptyMessage": "Messaggio vuoto",
+    "clickToPreview": "Clicca per anteprima",
+    "userUploadedImage": "Immagine caricata dall'utente",
+    "inputPlaceholder": "@file di riferimento, shift + invio per nuova riga",
+    "noThinkingContent": "Nessun contenuto di pensiero",
+    "parseError": "Impossibile analizzare il contenuto",
+    "sendMessageEnter": "Invia messaggio (Invio)",
+    "currentMode": "Modalità corrente: {{mode}}",
+    "currentModel": "Modello corrente: {{model}}",
+    "removeAttachment": "Rimuovi allegato",
+    "closePreview": "Chiudi anteprima",
+    "loadingDropdown": "Caricamento...",
+    "addAttachment": "Aggiungi allegato",
+    "stopGeneration": "Ferma generazione",
+    "generatingResponse": "Generazione risposta in corso",
+    "elapsedTime": "Tempo trascorso {{time}}",
+    "minutesAndSeconds": "{{minutes}}m {{seconds}}s",
+    "imagePreview": "Anteprima",
+    "context": "Contesto",
+    "usage": "Utilizzo",
+    "usagePercentage": "Utilizzo: {{percentage}}",
+    "noMatchingFiles": "Nessun file corrispondente",
+    "noMatchingCommands": "Nessun comando corrispondente",
+    "noAvailableAgents": "Nessun agente disponibile",
+    "collapse": "Comprimi",
+    "expand": "Espandi",
+    "backToTop": "Torna in alto",
+    "backToBottom": "Torna in basso",
+    "refresh": "Aggiorna",
+    "clickToDisable": "Clicca per disabilitare",
+    "clickToEnable": "Clicca per abilitare",
+    "copyHomepageLink": "Copia link homepage",
+    "copyDocsLink": "Copia link documentazione",
+    "editConfig": "Modifica config",
+    "deleteServer": "Elimina server",
+    "loadingFailed": "Caricamento fallito",
+    "pleaseCloseAndReopen": "Si prega di chiudere e riaprire",
+    "loadingSlashCommands": "Caricamento comandi slash...",
+    "pleaseWait": "Si prega di attendere...",
+    "retrying": "Tentativo in corso ({{count}}/{{max}})...",
+    "global": "Globale",
+    "localProject": "Locale",
+    "disabled": "Disabilitato",
+    "sdkNotInstalled": "SDK {{provider}} non è installato. Si prega di installare l'SDK per iniziare a chattare.",
+    "sdkStatusLoading": "Verifica stato SDK...",
+    "goInstallSdk": "Vai a Installa"
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "basic": {
+      "title": "Configurazione di Base",
+      "description": "Configura tema pagina, lingua e ambiente Node.js",
+      "theme": {
+        "label": "Tema",
+        "light": "Tema Chiaro",
+        "lightDesc": "Fresco e luminoso, adatto per l'uso diurno",
+        "dark": "Tema Scuro",
+        "darkDesc": "Adatto agli occhi, adatto per l'uso notturno"
+      },
+      "language": {
+        "label": "Lingua",
+        "simplifiedChinese": "简体中文",
+        "traditionalChinese": "繁體中文",
+        "english": "English",
+        "hindi": "हिन्दी",
+        "spanish": "Español",
+        "french": "Français",
+        "japanese": "日本語",
+        "italian": "Italiano"
+      },
+      "nodePath": {
+        "label": "Percorso Node.js",
+        "placeholder": "es. C:\\Program Files\\nodejs\\node.exe o /usr/local/bin/node",
+        "hint": "Esegui nel terminale",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "per ottenere il percorso effettivo dell'eseguibile Node.js. Lascia vuoto per rilevare automaticamente.",
+        "versionTooLow": "La versione di Node.js è troppo bassa. Il plugin richiede v{{minVersion}} o superiore per funzionare correttamente"
+      },
+      "workingDirectory": {
+        "label": "Directory di Lavoro",
+        "placeholder": "es. project1 o lascia vuoto per usare la radice del progetto",
+        "hint": "Specifica la directory in cui lavora Claude. Puoi usare percorso relativo (relativo alla radice del progetto) o percorso assoluto. Lascia vuoto per usare la radice del progetto."
+      },
+      "fontSize": {
+        "label": "Dimensione Font",
+        "level1": "Piccolo (80%)",
+        "level2": "Più piccolo (90%)",
+        "level3": "Standard (100%)",
+        "level4": "Più grande (110%)",
+        "level5": "Grande (120%)",
+        "level6": "Grandissimo (140%)"
+      },
+      "editorFont": {
+        "label": "Famiglia Font",
+        "hint": "Attualmente usando il font dell'editor IDEA. Seleziona un font personalizzato qui sotto per sovrascrivere.",
+        "ideaDefault": "Font Editor IDEA (Predefinito)",
+        "customHint": "Uso font personalizzato. Ripristina per usare il font dell'editor IDEA.",
+        "resetToIdea": "Ripristina Font IDEA",
+        "preview": "Anteprima"
+      },
+      "streaming": {
+        "label": "Streaming",
+        "enabled": "Abilitato",
+        "disabled": "Disabilitato",
+        "hint": "Quando abilitato, le risposte AI appariranno carattere per carattere in tempo reale, invece di attendere la risposta completa. Può consumare più risorse."
+      },
+      "sendShortcut": {
+        "label": "Scorciatoia Invio",
+        "enter": "Invio per Inviare",
+        "enterDesc": "Premi Invio per inviare il messaggio, Shift+Invio per nuova riga",
+        "cmdEnter": "⌘/Ctrl+Invio per Inviare",
+        "cmdEnterDesc": "Premi ⌘/Ctrl+Invio per inviare il messaggio, Invio per nuova riga"
+      }
+    },
+    "providers": "Gestione Provider",
+    "providersDesc": "Gestisci configurazioni provider API Claude e passa tra diversi provider di servizi API",
+    "dependencies": "Dipendenze SDK",
+    "dependenciesDesc": "Gestisci installazioni e aggiornamenti delle dipendenze AI SDK",
+    "dependency": {
+      "title": "Gestione Dipendenze SDK",
+      "description": "Gestisci dipendenze AI SDK. Installa l'SDK richiesto prima del primo utilizzo.",
+      "installPolicyTip": "Per ridurre le dimensioni del pacchetto, gli SDK ora devono essere installati manualmente",
+      "claudeSdkName": "Claude Code SDK",
+      "claudeSdkDescription": "Richiesto per le funzionalità AI Claude. Include Claude Code SDK e dipendenze correlate.",
+      "codexSdkName": "Codex SDK",
+      "codexSdkDescription": "Richiesto per le funzionalità AI Codex. Include OpenAI Codex SDK.",
+      "loading": "Caricamento stato dipendenze...",
+      "install": "Installa",
+      "installing": "Installazione in corso...",
+      "uninstall": "Disinstalla",
+      "uninstalling": "Disinstallazione in corso...",
+      "update": "Aggiorna",
+      "updateAvailable": "Aggiornamento disponibile",
+      "installLogs": "Log Installazione",
+      "waitingForLogs": "In attesa dell'output dei log...",
+      "nodeNotConfigured": "Node.js non è configurato. Si prega di impostare il percorso Node.js nelle Impostazioni di Base prima.",
+      "installSuccess": "{{name}} installato con successo",
+      "installFailed": "Installazione fallita: {{error}}",
+      "uninstallSuccess": "{{name}} è stato disinstallato",
+      "uninstallFailed": "Disinstallazione fallita: {{error}}"
+    },
+    "usage": "Statistiche Utilizzo",
+    "usageDesc": "Visualizza il consumo dei Token, le statistiche dei costi e l'analisi delle tendenze di utilizzo",
+    "mcp": "Server MCP",
+    "mcpDesc": "Configura e gestisci i server Model Context Protocol",
+    "permissions": "Permessi",
+    "permissionsDesc": "Gestisci i permessi di accesso e operazione sui file di Claude Code",
+    "agents": "Agenti",
+    "agentsDesc": "Gestisci e configura gli agenti AI",
+    "skills": "Abilità",
+    "skillsDesc": "Gestisci e configura i moduli abilità",
+    "codexFeatureUnavailable": "Questa sezione delle impostazioni non è ancora disponibile in Codex. Si prega di passare a Claude Code.",
+    "community": "Comunità",
+    "communityDesc": "Scansiona il codice QR qui sotto per unirti al gruppo WeChat ufficiale per le ultime notizie e supporto tecnico",
+    "communityQrTip": "Scansiona con WeChat per unirti alla comunità",
+    "communityQrAlt": "Codice QR comunità WeChat ufficiale",
+    "provider": {
+      "currentConfig": "Configurazione ClaudeCode Corrente",
+      "loading": "Caricamento...",
+      "noConfig": "Nessuna configurazione",
+      "emptyProvider": "Nessun provider configurato",
+      "notConfigured": "Non configurato",
+      "apiKey": "API Key",
+      "baseUrl": "Base URL",
+      "provider": "Provider",
+      "source": "Fonte",
+      "show": "Mostra",
+      "hide": "Nascondi",
+      "switchTo": "Passa a",
+      "addProvider": "Aggiungi Provider",
+      "importProvider": "Importa Provider",
+      "importFrom": "Importa da",
+      "importFromCcSwitch": "Importa da cc-switch",
+      "edit": "Modifica",
+      "delete": "Elimina",
+      "deleteConfirm": "Conferma Eliminazione Provider",
+      "deleteMessage": "Sei sicuro di voler eliminare il provider \"{{name}}\"? Questa azione non può essere annullata.",
+      "convertLocal": "Converti in Locale",
+      "convertMessage": "Dopo la conversione, la connessione con la fonte di importazione sarà disconnessa. Questa azione è irreversibile.",
+      "convertSuccess": "Conversione riuscita, nuovo ID generato e disconnesso",
+      "importing": "Importazione in corso...",
+      "allProviders": "Tutti i Provider",
+      "import": "Importa",
+      "importFromCcSwitchUpdate": "Importa/Aggiorna da cc-switch",
+      "importFromCcSwitchFile": "Seleziona File cc-switch.db da Importare",
+      "importFromCcSwitchCli": "Importa/Aggiorna da cc-switch CLI",
+      "importFromClaudeRouter": "Importa/Aggiorna da Claude Code Router",
+      "featureComingSoon": "Funzionalità non ancora implementata, coming soon",
+      "readingCcSwitch": "Lettura configurazione cc-switch...",
+      "editCcSwitchTitle": "Modifica Configurazione cc-switch",
+      "editCcSwitchWarning": "Stai modificando una configurazione cc-switch. La modifica non aggiornerà cc-switch e le importazioni potrebbero sovrascrivere le tue modifiche. Considera di convertire in configurazione locale prima di modificare.",
+      "continueEdit": "Continua a Modificare",
+      "convertAndEdit": "Converti e Modifica",
+      "convertToPlugin": "Converti in Configurazione Plugin",
+      "convertConfirmMessage": "Convertire la configurazione cc-switch \"{{name}}\" in configurazione plugin?",
+      "convertDetailMessage": "Dopo la conversione, la connessione ID con cc-switch sarà disconnessa e le importazioni future non sovrascriveranno questa configurazione.",
+      "confirmConvert": "Conferma Conversione",
+      "inUse": "In Uso",
+      "enable": "Abilita",
+      "localProviderName": "Impostazioni locali.json",
+      "localProviderDescription": "Usa la configurazione direttamente da ~/.claude/settings.json",
+      "localProviderHelp": "Quando usi la modalità provider locale:\n• Il plugin non modificherà il tuo file ~/.claude/settings.json\n• Devi gestire manualmente le tue configurazioni\n• Assicurati che il file esista e contenga JSON valido\n• Adatto per utenti avanzati che preferiscono il controllo manuale",
+      "importDialog": {
+        "title": "Importa Configurazione cc-switch",
+        "summary": "Trovate {{total}} configurazioni, incluse",
+        "newCount": "{{count}} nuove",
+        "updateCount": "{{count}} aggiornamenti",
+        "columnName": "Nome",
+        "columnId": "ID",
+        "columnStatus": "Stato",
+        "statusNew": "Nuovo",
+        "statusUpdate": "Aggiorna",
+        "selectedCount": "{{count}} elementi selezionati",
+        "confirmImport": "Conferma Importazione"
+      },
+      "deleteProviderMessage": "Sei sicuro di voler eliminare il provider \"{{name}}\"?\n\nQuesta azione non può essere annullata.",
+      "dialog": {
+        "addTitle": "Aggiungi Provider",
+        "editTitle": "Modifica Provider: {{name}}",
+        "addDescription": "Configura le informazioni del nuovo provider",
+        "editDescription": "Le modifiche verranno applicate immediatamente al provider corrente.",
+        "providerName": "Nome Provider",
+        "providerNamePlaceholder": "es., Claude Ufficiale",
+        "remark": "Nota",
+        "remarkPlaceholder": "Opzionale",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "sk-ant-...",
+        "apiKeyHint": "Inserisci la tua API Key",
+        "apiUrl": "Endpoint API",
+        "apiUrlPlaceholder": "https://api.anthropic.com",
+        "apiUrlHint": "Inserisci indirizzo endpoint servizio API compatibile con Claude API",
+        "modelMapping": "Mappatura Modelli (verrà iniettato in JSON env)",
+        "mainModel": "Modello Principale",
+        "mainModelPlaceholder": "es., claude-sonnet-4-5",
+        "haikuModel": "Modello Predefinito Haiku",
+        "haikuModelPlaceholder": "es., claude-haiku-4-5",
+        "sonnetModel": "Modello Predefinito Sonnet",
+        "sonnetModelPlaceholder": "es., claude-sonnet-4-5",
+        "opusModel": "Modello Predefinito Opus",
+        "opusModelPlaceholder": "es., claude-opus-4-5-20251101",
+        "modelMappingHint": "Opzionale: Specifica i modelli Claude predefiniti da usare. Lascia vuoto per i predefiniti di sistema.",
+        "jsonConfig": "Configurazione JSON",
+        "jsonConfigDescription": "Configura qui il contenuto completo di settings.json, supporta tutti i campi (es., model, alwaysThinkingEnabled, ccSwitchProviderId, codemossProviderId, ecc.)",
+        "jsonError": "Formato JSON non valido",
+        "required": "*",
+        "showApiKey": "Mostra",
+        "hideApiKey": "Nascondi",
+        "confirmAdd": "Conferma Aggiunta",
+        "saveChanges": "Salva Modifiche",
+        "codeView": "Codice",
+        "visualView": "Visuale",
+        "formatJson": "Formatta",
+        "invalidJson": "Formato JSON non valido, passa alla visualizzazione codice per correggere"
+      }
+    },
+    "comingSoon": "Coming soon...",
+    "permissionsComingSoon": "Configurazione permessi coming soon...",
+    "agentsComingSoon": "Configurazione agenti coming soon...",
+    "skillsComingSoon": "Configurazione abilità coming soon...",
+    "codexProvider": {
+      "title": "Gestione Provider Codex",
+      "description": "Gestisci configurazioni provider Codex, le impostazioni verranno scritte nella directory ~/.codex/",
+      "emptyProvider": "Nessun provider Codex configurato, clicca Aggiungi per crearne uno",
+      "deleteConfirmTitle": "Conferma Eliminazione",
+      "deleteConfirmMessage": "Sei sicuro di voler eliminare il provider \"{{name}}\"? Questa azione non può essere annullata.",
+      "dialog": {
+        "addTitle": "Aggiungi Provider Codex",
+        "editTitle": "Modifica Provider: {{name}}",
+        "addDescription": "Configura nuovo provider Codex, verrà scritto nella directory ~/.codex/",
+        "editDescription": "Le modifiche verranno applicate immediatamente alla directory ~/.codex/",
+        "providerName": "Nome Provider",
+        "providerNamePlaceholder": "es., Codex Ufficiale",
+        "configJson": "Config",
+        "authJsonLabel": "Config",
+        "formatJson": "Formatta",
+        "formatSuccess": "Formattazione riuscita",
+        "formatError": "Formattazione fallita, JSON non valido",
+        "nameRequired": "Si prega di inserire il nome del provider",
+        "configJsonError": "Errore formato JSON config.toml",
+        "authJsonError": "Errore formato JSON auth.json",
+        "configJsonHint": "Oggetto JSON contenente model_provider, model, model_providers, ecc.",
+        "authJsonHint": "Oggetto JSON contenente OPENAI_API_KEY e altre info di autenticazione"
+      }
+    },
+    "agent": {
+      "title": "Agenti",
+      "create": "Crea",
+      "createAgent": "Crea Agente",
+      "createAgentHint": "Clicca per andare alla pagina impostazioni agente per creare",
+      "customAgents": "Agenti Personalizzati",
+      "noAgents": "Nessun agente personalizzato",
+      "noAgentsDropdown": "Nessun agente",
+      "loadFailed": "Caricamento fallito",
+      "loading": "Caricamento...",
+      "menu": "Menu",
+      "addSuccess": "Agente creato con successo",
+      "updateSuccess": "Agente aggiornato con successo",
+      "deleteSuccess": "Agente eliminato con successo",
+      "operationSuccess": "Operazione riuscita",
+      "operationFailed": "Operazione fallita",
+      "deleteConfirmTitle": "Conferma Eliminazione",
+      "deleteConfirmMessage": "Sei sicuro di voler eliminare l'agente \"{{name}}\"? Questa azione non può essere annullata.",
+      "clearAgent": "Cancella agente selezionato",
+      "dialog": {
+        "addTitle": "Crea Agente",
+        "editTitle": "Modifica Agente",
+        "name": "Nome",
+        "namePlaceholder": "Inserisci nome agente",
+        "nameRequired": "Si prega di inserire il nome dell'agente",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Inserisci il ruolo dell'agente, tono, workflow, preferenze strumenti e regole. (Opzionale)",
+        "promptHint": "Il prompt verrà inviato all'AI come istruzioni di sistema all'inizio della conversazione",
+        "confirmAdd": "Crea",
+        "saveChanges": "Salva"
+      }
+    }
+  },
+  "history": {
+    "title": "Cronologia",
+    "sessionDeleted": "Sessione eliminata",
+    "confirmDelete": "Conferma Eliminazione",
+    "deleteMessage": "Sei sicuro di voler eliminare questa sessione? Questa azione non può essere annullata.",
+    "deleteSession": "Elimina questa sessione",
+    "exportSession": "Esporta sessione",
+    "exportSuccess": "Sessione esportata",
+    "exportFailed": "Esportazione fallita",
+    "favoriteSession": "Aggiungi sessione ai preferiti",
+    "unfavoriteSession": "Rimuovi sessione dai preferiti",
+    "favorited": "Aggiunto ai preferiti",
+    "unfavorited": "Rimosso dai preferiti",
+    "loading": "Caricamento cronologia...",
+    "loadFailed": "Caricamento fallito",
+    "noSessions": "Nessuna sessione di cronologia",
+    "noSessionsDesc": "Nessun record di sessione Claude trovato nel progetto corrente",
+    "totalSessions": "{{count}} sessioni · {{total}} messaggi",
+    "messageCount": "{{count}} messaggi",
+    "searchPlaceholder": "Cerca titoli sessione...",
+    "noSearchResults": "Nessuna sessione corrispondente trovata",
+    "editTitle": "Modifica titolo",
+    "saveTitleButton": "Salva",
+    "cancelEditButton": "Annulla",
+    "titleTooLong": "Titolo troppo lungo (max 50 caratteri)",
+    "titleUpdated": "Titolo aggiornato",
+    "timeAgo": {
+      "yearsAgo": "anni fa",
+      "monthsAgo": "mesi fa",
+      "daysAgo": "giorni fa",
+      "hoursAgo": "ore fa",
+      "minutesAgo": "minuti fa",
+      "secondsAgo": "secondi fa"
+    }
+  },
+  "permission": {
+    "dialogTitle": "Richiesta Permesso",
+    "allow": "Permetti Una Volta",
+    "allowAlways": "Permetti Sempre",
+    "deny": "Nega",
+    "userDenied": "L'utente ha negato la richiesta di permesso",
+    "fromExternalProcess": "Richiesta da processo esterno",
+    "tools": {
+      "Write": "Scrivi File",
+      "Edit": "Modifica File",
+      "Read": "Leggi File",
+      "Bash": "Esegui Comando",
+      "TodoWrite": "Scrivi Todo",
+      "TodoRead": "Leggi Todo",
+      "WebSearch": "Ricerca Web",
+      "WebFetch": "Recupera Web",
+      "execute": "Esegui {{toolName}}",
+      "readDirectory": "Leggi Directory"
+    }
+  },
+  "askUserQuestion": {
+    "title": "Claude ha alcune domande per te",
+    "progress": "Domanda {{current}} / {{total}}",
+    "multiSelectHint": "Puoi selezionare più opzioni",
+    "cancel": "Selezione Automatica AI",
+    "back": "Indietro",
+    "next": "Avanti",
+    "submit": "Invia"
+  },
+  "toast": {
+    "switchSuccess": "Passaggio riuscito",
+    "thinkingEnabled": "Pensiero abilitato",
+    "thinkingDisabled": "Pensiero disabilitato",
+    "configLoading": "Caricamento configurazione, si prega di riprovare",
+    "saveSuccess": "Salvato con successo",
+    "deleteSuccess": "Eliminato con successo",
+    "operationFailed": "Operazione fallita",
+    "copySuccess": "{{label}} copiato negli appunti",
+    "copyFailed": "Copia fallita",
+    "newSessionCreatedReady": "Nuova sessione creata, puoi iniziare a fare domande",
+    "providerSwitchSuccess": "Provider cambiato con successo!",
+    "providerSwitchFailed": "Cambio provider fallito",
+    "operationSuccess": "Operazione riuscita",
+    "pleaseEnterProviderName": "Si prega di inserire il nome del provider",
+    "invalidJsonConfig": "Formato configurazione JSON non valido",
+    "providerAdded": "Provider aggiunto",
+    "providerUpdated": "Provider aggiornato",
+    "providerDeleted": "Provider eliminato"
+  },
+  "config": {
+    "clickToCopy": "Clicca per copiare",
+    "switch": "Cambia",
+    "switchProvider": "Cambia provider",
+    "link": "Link"
+  },
+  "markdown": {
+    "copyCode": "Copia codice",
+    "copyMessage": "Copia messaggio",
+    "copySuccess": "Copiato!"
+  },
+  "usage": {
+    "loading": "Caricamento statistiche...",
+    "noData": "Nessun dato statistico",
+    "loadData": "Carica dati",
+    "currentProject": "Progetto corrente",
+    "allProjects": "Tutti i progetti",
+    "last7Days": "Ultimi 7 giorni",
+    "last30Days": "Ultimi 30 giorni",
+    "allTime": "Sempre",
+    "refreshData": "Aggiorna dati",
+    "overview": "Panoramica",
+    "models": "Modelli",
+    "sessions": "Sessioni",
+    "timeline": "Timeline",
+    "totalCost": "Costo totale",
+    "totalSessions": "Sessioni totali",
+    "totalTokens": "Token totali",
+    "avgPerSession": "Media/sessione",
+    "comparedToLastWeek": "vs settimana scorsa",
+    "tokenBreakdown": "Scomposizione token",
+    "input": "Input",
+    "output": "Output",
+    "cacheWrite": "Scrittura cache",
+    "cacheRead": "Lettura cache",
+    "topModels": "Modelli principali",
+    "byModel": "Per modello",
+    "sessionCount": "Numero sessioni",
+    "sessionList": "Elenco sessioni",
+    "sortByCost": "Per costo",
+    "sortByTime": "Per tempo",
+    "dailyTrend": "Tendenza utilizzo giornaliero",
+    "noDataInRange": "Nessun dato in questo intervallo di date",
+    "sessionsCount": "sessioni",
+    "lastUpdated": "Ultimo aggiornamento",
+    "today": "Oggi",
+    "yesterday": "Ieri",
+    "daysAgo": "giorni fa",
+    "justNow": "Proprio ora",
+    "minutesAgo": "minuti fa",
+    "hoursAgo": "ore fa",
+    "description": "Descrizione",
+    "command": "Comando"
+  },
+  "mcp": {
+    "title": "Server MCP",
+    "whatIsMcp": "Cos'è MCP?",
+    "refreshStatus": "Aggiorna stato server",
+    "add": "Aggiungi",
+    "manualConfig": "Configurazione manuale",
+    "addFromMarket": "Aggiungi dal mercato MCP",
+    "marketComingSoon": "Funzionalità mercato MCP non ancora implementata, coming soon",
+    "description": "Descrizione",
+    "command": "Comando",
+    "url": "URL",
+    "homepage": "Homepage",
+    "docs": "Documentazione",
+    "edit": "Modifica",
+    "delete": "Elimina",
+    "noServers": "Nessun server MCP",
+    "addServerHint": "Clicca il pulsante 'Aggiungi' per aggiungere un server",
+    "loading": "Caricamento...",
+    "deleteTitle": "Elimina server MCP",
+    "deleteMessage": "Sei sicuro di voler eliminare il server \"{{name}}\"?\n\nQuesta azione non può essere annullata.",
+    "deleteConfirm": "Elimina",
+    "cancel": "Annulla",
+    "enabled": "Abilitato",
+    "disabled": "Disabilitato",
+    "deleted": "Eliminato",
+    "updated": "Aggiornato",
+    "saved": "Salvato",
+    "added": "Aggiunto",
+    "linkCopied": "Link copiato, si prega di aprire nel browser",
+    "copyFailed": "Copia fallita, si prega di copiare manualmente",
+    "connectionStatus": "Stato Connessione",
+    "serverVersion": "Versione Server",
+    "statusConnected": "Connesso",
+    "statusFailed": "Connessione Fallita",
+    "statusNeedsAuth": "Richiede Autenticazione",
+    "statusPending": "Connessione in corso...",
+    "statusUnknown": "Sconosciuto",
+    "presets": {
+      "fetch": "Strumento di recupero contenuti web per scraping pagine web",
+      "time": "Utilità tempo e fuso orario",
+      "memory": "Strumento di archiviazione knowledge graph e memoria",
+      "sequentialThinking": "Strumento di pensiero sequenziale e ragionamento",
+      "context7": "Strumento di ricerca documenti e recupero contesto"
+    },
+    "help": {
+      "title": "Cos'è MCP?",
+      "protocol": {
+        "title": "Model Context Protocol",
+        "description": "MCP (Model Context Protocol) è un protocollo aperto sviluppato da Anthropic che permette ai modelli AI di accedere in modo sicuro a strumenti e fonti dati esterni."
+      },
+      "features": {
+        "title": "Caratteristiche Chiave",
+        "toolExtension": {
+          "label": "Estensione Strumenti",
+          "description": "Aggiungi capacità come accesso file system e rete a Claude"
+        },
+        "dataConnection": {
+          "label": "Connessione Dati",
+          "description": "Connessione a fonti dati esterne come database e API"
+        },
+        "security": {
+          "label": "Sicurezza & Controllo",
+          "description": "Controllo permessi rigoroso e isolamento dati"
+        },
+        "integration": {
+          "label": "Integrazione Semplice",
+          "description": "Supporto per più linguaggi di programmazione e ambienti runtime"
+        }
+      },
+      "configuration": {
+        "title": "Metodi di Configurazione",
+        "description": "Due tipi di configurazione supportati:",
+        "stdio": {
+          "description": "Comunica con processi locali tramite standard input/output",
+          "example": "Avviato con comandi npx/uvx"
+        },
+        "httpSse": {
+          "description": "Comunica con server remoti tramite rete",
+          "example": "Indirizzo URL"
+        }
+      },
+      "learnMore": {
+        "title": "Per Saperne di Più",
+        "description": "Visita la documentazione ufficiale:"
+      },
+      "gotIt": "Ho Capito"
+    },
+    "serverDialog": {
+      "addTitle": "Configurazione Manuale",
+      "editTitle": "Modifica Server",
+      "rawConfig": "Configurazione Grezza (JSON)",
+      "description": "Inserisci configurazione JSON dei Server MCP (preferisci configurazione NPX o UVX)",
+      "securityWarning": "Si prega di verificare la fonte e valutare i rischi prima della configurazione",
+      "saving": "Salvataggio...",
+      "errors": {
+        "idExists": "ID server \"{{id}}\" esiste già",
+        "unrecognizedFormat": "Formato configurazione non riconosciuto",
+        "jsonParseError": "Errore parsing JSON: {{message}}"
+      }
+    }
+  },
+  "tools": {
+    "toolCall": "Chiamata Strumento",
+    "runCommand": "Esegui Comando",
+    "contextEngine": "Motore Contesto",
+    "task": "Attività",
+    "readFile": "Leggi File",
+    "editFile": "Modifica File",
+    "writeFile": "Scrivi File",
+    "replaceString": "Sostituisci Stringa",
+    "executeCommand": "Esegui Comando",
+    "search": "Cerca",
+    "fileMatch": "Match File",
+    "webFetch": "Web Fetch",
+    "webSearch": "Ricerca Web",
+    "delete": "Elimina",
+    "explore": "Esplora",
+    "createDirectory": "Crea Directory",
+    "moveFile": "Sposta File",
+    "copyFile": "Copia File",
+    "listFiles": "Elenca File",
+    "findFile": "Trova File",
+    "todoList": "Elenco Todo",
+    "editFileTitle": "Modifica File",
+    "clickToOpen": "Clicca per aprire {{filePath}}",
+    "refreshFileInIdea": "Aggiorna file in IDEA",
+    "refreshFileInIdeaSuccess": "Aggiornato manualmente questo file in IDEA",
+    "showDiffInIdea": "Mostra modifiche in IDEA",
+    "diffButton": "Diff",
+    "editPrefix": "Modifica: {{fileName}}",
+    "lineRange": "Righe {{start}}-{{end}}",
+    "filePath": "Percorso file:",
+    "unknownTool": "Strumento sconosciuto"
+  },
+  "skills": {
+    "title": "Abilità",
+    "all": "Tutti",
+    "global": "Globale",
+    "local": "Locale",
+    "filterEnabled": "Filtra Abilità Abilitate",
+    "enabled": "Abilitato",
+    "filterDisabled": "Filtra Abilità Disabilitate",
+    "disabled": "Disabilitato",
+    "searchPlaceholder": "Cerca Abilità...",
+    "whatIsSkills": "Cos' sono le Abilità?",
+    "importSkill": "Importa Abilità",
+    "importGlobalSkill": "Importa Abilità Globale",
+    "importLocalSkill": "Importa Abilità Locale",
+    "description": "Descrizione",
+    "noDescription": "Nessuna descrizione",
+    "noSkills": "Nessuna Abilità",
+    "importHint": "Clicca pulsante + per importare file o cartella Abilità",
+    "deleteTitle": "Elimina Abilità",
+    "deleteMessage": "Sei sicuro di voler eliminare l'Abilità {{scope}} \"{{name}}\"?\n\nQuesta azione non può essere annullata.",
+    "deleteMessageGlobal": "globale",
+    "deleteMessageLocal": "locale",
+    "importSuccess": "Importate con successo {{count}} Abilità",
+    "importSuccessOne": "Importata con successo 1 Abilità",
+    "importPartialSuccess": "Importate con successo {{count}}/{{total}} Abilità, alcune fallite",
+    "importFailed": "Importazione Abilità fallita",
+    "deleteSuccess": "Abilità eliminata con successo",
+    "toggleSuccess": "Aggiornato stato Abilità",
+    "toggleFailed": "Impossibile aggiornare stato Abilità",
+    "help": {
+      "title": "Cos' sono le Abilità?",
+      "overview": {
+        "title": "Panoramica",
+        "description": "Le Abilità sono set di istruzioni caricati dinamicamente, script e cartelle risorse che migliorano le prestazioni di Claude per compiti specifici. Le Abilità insegnano a Claude come completare particolari compiti in modo ripetibile, come creare documenti usando le linee guida del brand aziendale, analizzare dati seguendo flussi di lavoro specifici dell'organizzazione, o automatizzare compiti personali."
+      },
+      "structure": {
+        "title": "Struttura Abilità",
+        "description": "Un'Abilità è una cartella contenente un file SKILL.md:",
+        "example": "mia-abilità/\n├── SKILL.md          # Richiesto: file definizione abilità\n├── templates/        # Opzionale: file template\n└── references/       # Opzionale: materiali di riferimento"
+      },
+      "format": {
+        "title": "Formato SKILL.md",
+        "description": "I file SKILL.md usano formato frontmatter YAML + Markdown:",
+        "example": "---\nname: nome-abilità\ndescription: Descrizione abilità e quando usarla\n---\n\n# Istruzioni Abilità\n\nContenuto istruzioni dettagliate...",
+        "hint": "nome e descrizione sono campi richiesti. Campi opzionali includono license, allowed-tools, metadata"
+      },
+      "configuration": {
+        "title": "Metodi di Configurazione",
+        "description": "Modi per aggiungere un'Abilità:",
+        "localPath": {
+          "label": "Percorso Locale",
+          "description": "Specifica percorso cartella contenente SKILL.md"
+        },
+        "relativePath": {
+          "label": "Percorso Relativo",
+          "description": "Relativo alla radice del progetto, es., ./skills/mia-abilità"
+        },
+        "absolutePath": {
+          "label": "Percorso Assoluto",
+          "description": "Percorso completo del filesystem"
+        }
+      },
+      "tips": {
+        "title": "Consigli Utilizzo",
+        "item1": "Assicurati che la cartella Abilità contenga un file SKILL.md valido",
+        "item2": "I nomi delle Abilità devono usare lettere minuscole, numeri e trattini (hyphen-case)",
+        "item3": "Le Abilità hanno effetto automaticamente nelle sessioni Claude dopo il caricamento",
+        "item4": "Controlla lo stato delle singole Abilità con toggle abilita/disabilita",
+        "item5": "Mentiona il nome dell'Abilità in chat per usarla, es., \"Usa l'abilità pdf per estrarre i campi del modulo\""
+      },
+      "learnMore": {
+        "title": "Per Saperne di Più",
+        "description": "Più informazioni sulle Abilità:",
+        "link1": "Cos' sono le Abilità?",
+        "link2": "Creazione Abilità Personalizzate",
+        "link3": "Repository Esempi Abilità Anthropic"
+      }
+    }
+  },
+  "models": {
+    "claude": {
+      "sonnet45": {
+        "label": "Sonnet 4.5",
+        "description": "Sonnet 4.5 · Usa il modello predefinito"
+      },
+      "opus45": {
+        "label": "Opus 4.5",
+        "description": "Opus 4.5 · Più capace per lavori complessi"
+      },
+      "haiku45": {
+        "label": "Haiku 4.5",
+        "description": "Haiku 4.5 · Più veloce per risposte rapide"
+      }
+    },
+    "codex": {
+      "gpt52codex": {
+        "label": "gpt-5.2-codex",
+        "description": "Modello agentic di frontiera più recente."
+      },
+      "gpt51codexMax": {
+        "label": "gpt-5.1-codex-max",
+        "description": "Frontiera ottimizzata per codex per ragionamento profondo e veloce."
+      },
+      "gpt51codexMini": {
+        "label": "gpt-5.1-codex-mini",
+        "description": "Ottimizzato per codex. Più economico, veloce, ma meno capace."
+      },
+      "gpt52": {
+        "label": "gpt-5.2",
+        "description": "Modello di frontiera più recente con miglioramenti nella conoscenza."
+      }
+    }
+  },
+  "modes": {
+    "default": {
+      "label": "Modalità Predefinita",
+      "tooltip": "Comportamento permessi standard",
+      "description": "Richiede conferma manuale per ogni operazione, adatto per uso prudente"
+    },
+    "plan": {
+      "label": "Modalità Piano",
+      "tooltip": "Modalità piano - Nessuna esecuzione (non ancora supportato)",
+      "description": "Solo pianificazione senza esecuzione, non ancora supportato"
+    },
+    "acceptEdits": {
+      "label": "Modalità Agente",
+      "tooltip": "Accetta automaticamente modifiche file",
+      "description": "Accetta automaticamente creazione/modifica file, riducendo i passaggi di conferma"
+    },
+    "bypassPermissions": {
+      "label": "Modalità Auto",
+      "tooltip": "Bypassa tutti i controlli permesso",
+      "description": "Completamente automatizzato, bypassando tutti i controlli permesso [Usa con cautela]"
+    }
+  },
+  "codexModes": {
+    "default": {
+      "label": "Suggerisci (approvazione)",
+      "tooltip": "Codex approval_policy=untrusted – richiede prima di modificare file o eseguire comandi shell.",
+      "description": "Opzione più sicura. Ogni scrittura o comando richiede la tua approvazione."
+    },
+    "plan": {
+      "label": "Modalità Piano",
+      "tooltip": "Solo pianificazione (non ancora supportato)",
+      "description": "Evidenzia passaggi senza eseguire (coming soon)"
+    },
+    "acceptEdits": {
+      "label": "Modifica Auto",
+      "tooltip": "Codex approval_policy=auto-edit – applica automaticamente patch file, chiede ancora prima dei comandi shell.",
+      "description": "Auto-crea e modifica file tramite apply_patch mantenendo approvazioni comandi."
+    },
+    "bypassPermissions": {
+      "label": "Full Auto",
+      "tooltip": "Codex approval_policy=never – esegue comandi e scrive file senza chiedere (sandbox workspace ancora applicato).",
+      "description": "Modalità hands-off. Codex esegue modifiche e comandi shell immediatamente."
+    }
+  },
+  "providers": {
+    "claude": {
+      "label": "Claude Code"
+    },
+    "codex": {
+      "label": "Codex Cli"
+    },
+    "gemini": {
+      "label": "Gemini Cli"
+    }
+  },
+  "promptEnhancer": {
+    "title": "Miglioratore Prompt",
+    "tooltip": "Migliora Prompt",
+    "tooltipFull": "Riscrivi il prompt per fornire più contesto e migliorare le risposte degli agenti",
+    "shortcut": "⌘/",
+    "enhancing": "Miglioramento prompt in corso...",
+    "originalPrompt": "Prompt Originale",
+    "enhancedPrompt": "Prompt Migliorato",
+    "useEnhanced": "Usa Migliorato",
+    "keepOriginal": "Mantieni Originale",
+    "enhanceFailed": "Impossibile migliorare il prompt",
+    "emptyPrompt": "Si prega di inserire prima un prompt",
+    "copyEnhanced": "Copia Migliorato"
+  },
+  "rewind": {
+    "title": "Ripristina File allo Stato Precedente",
+    "tooltip": "Ripristina",
+    "shortcut": "ESC ESC",
+    "tooltipFull": "Ripristina i file al loro stato in questo messaggio",
+    "selectTitle": "Seleziona Punto di Ripristino",
+    "noRewindableMessages": "Nessun messaggio ripristinabile in questa sessione",
+    "rewindTo": "Ripristina a",
+    "impact": "Impatto",
+    "willRestore": "Ripristinerà i file al loro stato in questo messaggio",
+    "changesLost": "Le modifiche fatte dopo questo punto andranno perse",
+    "messagesAffected": "messaggi interessati",
+    "historyKept": "La cronologia della conversazione sarà mantenuta",
+    "cannotUndo": "Questa azione non può essere annullata.",
+    "restoreFiles": "Ripristina File",
+    "restoring": "Ripristinazione file in corso...",
+    "success": "Ripristino riuscito",
+    "successSimple": "Ripristino riuscito",
+    "failed": "Impossibile ripristinare i file",
+    "notAvailable": "Ripristino non disponibile per questa sessione",
+    "parseError": "Impossibile analizzare il risultato"
+  },
+  "reasoning": {
+    "title": "Seleziona profondità ragionamento",
+    "low": {
+      "label": "Bassa",
+      "description": "Risposte rapide con ragionamento di base"
+    },
+    "medium": {
+      "label": "Media",
+      "description": "Pensiero equilibrato (predefinito)"
+    },
+    "high": {
+      "label": "Alta",
+      "description": "Pensiero profondo per compiti complessi"
+    },
+    "xhigh": {
+      "label": "Massima",
+      "description": "Profondità massima di ragionamento"
+    }
+  },
+  "aiBridge": {
+    "claudeCodeInterrupted": "Claude Code è stato interrotto (possibilmente timeout risposta o cancellazione utente):",
+    "claudeCodeError": "Errore Claude Code:",
+    "errorMessage": "Messaggio di errore",
+    "currentApiKeySource": "Fonte API Key corrente",
+    "currentApiKeyPreview": "Anteprima API Key corrente",
+    "currentBaseUrl": "Base URL corrente",
+    "source": "fonte",
+    "notConfigured": "Non configurato",
+    "notConfiguredEmpty": "Non configurato (valore vuoto o mancante)",
+    "defaultBaseUrl": "Predefinito (https://api.anthropic.com)",
+    "configTip": "Suggerimento: CLI può leggere da variabili ambiente o settings.json; questo plugin supporta solo la lettura da settings.json per evitare problemi. Puoi configurarlo nelle Impostazioni del plugin in alto a destra > Gestione Provider",
+    "apiError": "Errore API",
+    "apiErrorCauses": "Possibili cause:\n1. API Key non è configurata correttamente\n2. Problema configurazione servizio proxy di terze parti\n3. Si prega di verificare la configurazione in ~/.claude/settings.json",
+    "codexAuthError": "Errore autenticazione Codex:",
+    "codexAuthErrorChecks": "Si prega di verificare quanto segue:\n1. L'API Key Codex nelle impostazioni del plugin è corretta\n2. L'API Key ha permessi sufficienti\n3. Se usi un Base URL personalizzato, conferma che l'indirizzo è corretto",
+    "codexAuthTip": "Suggerimento: Codex richiede una valida API Key OpenAI",
+    "codexNetworkError": "Errore rete Codex:",
+    "codexNetworkErrorChecks": "Si prega di verificare:\n1. La connessione di rete funziona\n2. Se usi un proxy, conferma la configurazione proxy\n3. Il firewall sta bloccando la connessione",
+    "codexError": "Errore Codex:",
+    "codexErrorCheck": "Si prega di verificare la connessione di rete e la configurazione Codex",
+    "codexThinkingHint": "Codex non ha restituito elementi di ragionamento. Se non riesci ancora a vedere il processo di pensiero, si prega di fare riferimento a docs/codex/docs/config.md per le impostazioni hide_agent_reasoning/show_raw_agent_reasoning e assicurarsi che il tuo account OpenAI sia stato verificato.",
+    "userDeniedPermission": "L'utente ha negato il permesso per lo strumento {{toolName}}",
+    "userDidNotProvideAnswers": "L'utente non ha fornito risposte",
+    "dbMissingPath": "Argomento percorso file database mancante",
+    "dbFileNotExist": "Il file database non esiste",
+    "dbReadFailed": "Impossibile leggere il database",
+    "dbParseProviderFailed": "Impossibile analizzare la configurazione provider",
+    "aiResponseEmpty": "La risposta AI è vuota",
+    "enhancementFailed": "Miglioramento fallito",
+    "uploadedImages": "Caricate {{count}} immagini",
+    "uploadedAttachments": "Allegati caricati",
+    "emptyMessage": "Messaggio vuoto",
+    "attachment": "Allegato"
+  }
+}

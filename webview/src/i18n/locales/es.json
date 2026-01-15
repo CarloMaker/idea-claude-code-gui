@@ -116,8 +116,12 @@
         "level6": "Máximo (140%)"
       },
       "editorFont": {
-        "label": "Fuente (sigue la fuente del editor)",
-        "hint": "No editable aquí. Para modificar, ve a Configuración de IDEA → Editor → Fuente (reinicia IDEA para que la fuente del plugin surta efecto)"
+        "label": "Familia de Fuente",
+        "hint": "Actualmente usando la fuente del editor IDEA. Selecciona una fuente personalizada abajo para sobrescribir.",
+        "ideaDefault": "Fuente del Editor IDEA (Predeterminada)",
+        "customHint": "Usando fuente personalizada. Restablece para usar la fuente del editor IDEA.",
+        "resetToIdea": "Restablecer a Fuente IDEA",
+        "preview": "Vista Previa"
       },
       "sendShortcut": {
         "label": "Atajo de envío",
